@@ -116,7 +116,7 @@ export function BrokerConnect({
         <div>
           <h2 className="font-bold">Connect your broker</h2>
           <p className="text-sm text-body">
-            Paperstrike uses <em>your own</em> broker API keys for live market data. They&apos;re
+            Paperstrike uses <strong className="font-semibold text-foreground">your own</strong>{" "}broker API keys for live market data. They&apos;re
             verified with the broker and stored only in the data service&apos;s{" "}
             <code className="rounded bg-secondary px-1">.env</code> on this machine. No order
             is ever placed — the keys are only used to read prices.

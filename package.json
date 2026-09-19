@@ -1,0 +1,27 @@
+{
+  "name": "paperstrike",
+  "version": "0.1.0",
+  "description": "Practice NSE index options (NIFTY, BANKNIFTY, SENSEX) with real market data and virtual money. Bring your own Upstox or Groww API key.",
+  "keywords": ["paper-trading", "options", "nse", "nifty", "banknifty", "sensex", "upstox", "groww", "trading-simulator", "option-chain"],
+  "homepage": "https://github.com/rajmaurya0904/paperstrike#readme",
+  "bugs": "https://github.com/rajmaurya0904/paperstrike/issues",
+  "repository": { "type": "git", "url": "git+https://github.com/rajmaurya0904/paperstrike.git" },
+  "license": "AGPL-3.0-only",
+  "author": "Raj Maurya (https://github.com/rajmaurya0904)",
+  "type": "module",
+  "bin": { "paperstrike": "bin/paperstrike.mjs" },
+  "engines": { "node": ">=20" },
+  "files": [
+    "bin/",
+    "data/",
+    "!data/tests/",
+    "!data/.venv/",
+    "!data/**/__pycache__/",
+    "!data/.env",
+    "!data/*.db",
+    "web/",
+    "!web/node_modules/",
+    "!web/.next/",
+    "!web/.env.local"
+  ]
+}
