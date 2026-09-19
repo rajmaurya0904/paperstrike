@@ -7,6 +7,6 @@ certifi
 python-dotenv==1.2.3
 websocket-client==1.9.2
 # must stay on 5.x: proto/MarketDataFeed_pb2.py was generated for protobuf 5.29
-protobuf==5.29.6
+protobuf==7.36.1
 growwapi==1.5.0
 pyotp==2.10.0
