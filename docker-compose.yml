@@ -1,0 +1,27 @@
+# One command: docker compose up --build   →  open http://localhost:3000
+# Both ports are bound to 127.0.0.1 so only this machine can reach them —
+# the data service holds your broker keys.
+services:
+  api:
+    build: ./data
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      WEB_ORIGIN: http://localhost:3000,http://127.0.0.1:3000
+    volumes:
+      - paperstrike-state:/app/state
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./web
+      args:
+        NEXT_PUBLIC_DATA_URL: http://localhost:8000
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  paperstrike-state:

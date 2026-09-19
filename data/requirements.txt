@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+requests
+certifi
+python-dotenv
+websocket-client
+protobuf
+growwapi
+pyotp

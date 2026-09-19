@@ -1,0 +1,173 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  /* Wise scale hardcoded direct (not multiplier-derived) so card=24px/button=16px/input=12px match DESIGN-wise.md exactly */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-2xl: 24px;
+  --radius-3xl: 24px;
+  --radius-4xl: 9999px;
+  --color-canvas-soft: var(--canvas-soft);
+  --color-positive: var(--positive);
+  --color-positive-deep: var(--positive-deep);
+  --color-negative: var(--negative);
+  --color-negative-deep: var(--negative-deep);
+  --color-warning: var(--warning);
+  --color-warning-deep: var(--warning-deep);
+  --color-warning-content: var(--warning-content);
+  --color-ink-deep: var(--ink-deep);
+  --color-ink-dark: #0e0f0c; /* Wise dark card surface — stays dark in both modes */
+  --color-body: var(--body);
+  --color-mute: var(--mute);
+}
+
+:root {
+  /* Wise design tokens — DESIGN-wise.md */
+  --background: #e8ebe6;
+  --foreground: #0e0f0c;
+  --canvas-soft: #e8ebe6;
+  --card: #ffffff;
+  --card-foreground: #0e0f0c;
+  --popover: #ffffff;
+  --popover-foreground: #0e0f0c;
+  --primary: #9fe870;
+  --primary-foreground: #0e0f0c;
+  --secondary: #e8ebe6;
+  --secondary-foreground: #0e0f0c;
+  --muted: #e8ebe6;
+  --muted-foreground: #454745;
+  --accent: #e2f6d5;
+  --accent-foreground: #0e0f0c;
+  --destructive: #d03238;
+  --border: rgba(14, 15, 12, 0.1);
+  --input: rgba(14, 15, 12, 0.1);
+  --ring: #9fe870;
+  --chart-1: #9fe870;
+  --chart-2: #38c8ff;
+  --chart-3: #ffc091;
+  --chart-4: #2ead4b;
+  --chart-5: #ffd11a;
+  --radius: 1rem;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #0e0f0c;
+  --sidebar-primary: #9fe870;
+  --sidebar-primary-foreground: #0e0f0c;
+  --sidebar-accent: #e2f6d5;
+  --sidebar-accent-foreground: #0e0f0c;
+  --sidebar-border: rgba(14, 15, 12, 0.1);
+  --sidebar-ring: #9fe870;
+  --ink-deep: #163300;
+  --body: #454745;
+  --mute: #737471; /* Wise ships #868685, but that's 3.6:1 on white — too low for the hint labels it's used on */
+  --positive: #2ead4b;
+  --positive-deep: #054d28;
+  --warning: #ffd11a;
+  --warning-deep: #b86700;
+  --warning-content: #4a3b1c;
+  --negative: #d03238;
+  --negative-deep: #a72027;
+}
+
+.dark {
+  /* ponytail: Wise spec is light-first, no official dark palette — best-effort inversion, revisit if dark mode gets real usage */
+  --background: #0e0f0c;
+  --foreground: #e8ebe6;
+  /* Deliberately does NOT invert. ink-dark is a fixed dark surface in both
+     modes, and canvas-soft is the ink that sits on it — inverting it put dark
+     text on a dark band. */
+  --canvas-soft: #e8ebe6;
+  --card: #171916;
+  --card-foreground: #e8ebe6;
+  --popover: #171916;
+  --popover-foreground: #e8ebe6;
+  --primary: #9fe870;
+  --primary-foreground: #0e0f0c;
+  --secondary: #1e211c;
+  --secondary-foreground: #e8ebe6;
+  --muted: #1e211c;
+  --muted-foreground: #868685;
+  --accent: #1e2e14;
+  --accent-foreground: #cdffad;
+  --destructive: #d03238;
+  --border: rgba(232, 235, 230, 0.1);
+  --input: rgba(232, 235, 230, 0.15);
+  --ring: #9fe870;
+  --chart-1: #9fe870;
+  --chart-2: #38c8ff;
+  --chart-3: #ffc091;
+  --chart-4: #2ead4b;
+  --chart-5: #ffd11a;
+  --sidebar: #171916;
+  --sidebar-foreground: #e8ebe6;
+  --sidebar-primary: #9fe870;
+  --sidebar-primary-foreground: #0e0f0c;
+  --sidebar-accent: #1e2e14;
+  --sidebar-accent-foreground: #cdffad;
+  --sidebar-border: rgba(232, 235, 230, 0.1);
+  --sidebar-ring: #9fe870;
+  --ink-deep: #cdffad;
+  --body: #c5c7c2;
+  --mute: #868685;
+  --positive: #4fce6e;
+  /* the -deep pair reads as text on tinted surfaces, so in dark mode it has to
+     get lighter than its base, not darker */
+  --positive-deep: #86e8a3;
+  --warning: #ffd11a;
+  --warning-deep: #ffb340;
+  /* stays dark: it only ever sits on a solid yellow pill */
+  --warning-content: #4a3b1c;
+  --negative: #ff5a5f;
+  --negative-deep: #ff9ba0;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
