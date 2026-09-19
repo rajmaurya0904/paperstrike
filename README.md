@@ -101,16 +101,19 @@ npm run dev
 Paperstrike doesn't have its own data feed. It uses **your** broker account's API,
 so you get real, exchange-grade prices under your own broker's terms.
 
+> **Both brokers charge for API market data.** Paperstrike itself is free, but you need an
+> active paid API/data plan with Upstox or Groww. Check current pricing with your broker.
+
 | | **Upstox** | **Groww** |
 |---|---|---|
-| Cost | Free API | Trade API plan **that includes live data** (the free trial doesn't) |
+| Cost | Paid **Upstox Pro** plan with API market-data access | Paid Trade API plan **that includes live data** (the free trial doesn't) |
 | Daily login | Yes. Tokens expire at 03:30 IST, and **Log in with Upstox** is one click | **No** with TOTP keys, because Paperstrike renews the token itself |
 | Where to get keys | [Upstox developer apps](https://account.upstox.com/developer/apps) | [Groww Trade API](https://groww.in/trade-api) → API keys |
 
 <details>
 <summary><b>Upstox: step by step</b></summary>
 
-1. Open [Upstox developer apps](https://account.upstox.com/developer/apps) and create a new app.
+1. Make sure your Upstox account has the **Pro** plan with API market-data access, then open [Upstox developer apps](https://account.upstox.com/developer/apps) and create a new app.
 2. Set the app's **redirect URL** to `http://localhost:8000/auth/upstox/callback`.
 3. In Paperstrike go to **Settings → Upstox**, paste the **API key** and **API secret**, and click **Save & log in with Upstox**.
 4. Each morning, click **Log in with saved app**. Upstox tokens expire every day at 03:30 IST.

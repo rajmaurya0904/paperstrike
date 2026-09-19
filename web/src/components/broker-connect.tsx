@@ -56,7 +56,7 @@ async function post(path: string, body: unknown) {
 }
 
 const BROKERS: { id: BrokerId; label: string; blurb: string }[] = [
-  { id: "upstox", label: "Upstox", blurb: "Free API · token renews daily" },
+  { id: "upstox", label: "Upstox", blurb: "Pro plan with API data · daily login" },
   { id: "groww", label: "Groww", blurb: "Trade API plan with live data" },
 ];
 
@@ -210,15 +210,18 @@ function UpstoxForm({ status, busy, connect }: { status: BrokerStatus | null; bu
     <div className="flex flex-col gap-4">
       <ol className="flex flex-col gap-1.5">
         <Step n={1}>
+          You need a paid Upstox <strong className="font-semibold text-foreground">Pro</strong> plan with API market-data access.
+        </Step>
+        <Step n={2}>
           Create an app at{" "}
           <a className="font-semibold text-ink-deep hover:underline" href="https://account.upstox.com/developer/apps" target="_blank" rel="noreferrer">
             Upstox Developer Apps ↗
           </a>
         </Step>
-        <Step n={2}>
+        <Step n={3}>
           Set its redirect URL to <code className="rounded bg-secondary px-1 text-xs">{callback}</code>
         </Step>
-        <Step n={3}>Paste the API key and secret below, then log in. Repeat the login each morning — Upstox tokens expire at 03:30 IST.</Step>
+        <Step n={4}>Paste the API key and secret below, then log in. Repeat the login each morning — Upstox tokens expire at 03:30 IST.</Step>
       </ol>
 
       <div className="grid gap-3 sm:grid-cols-2">

@@ -211,7 +211,7 @@ export default function Landing() {
           },
           {
             q: "Do I need an account?",
-            a: "Not with us. There's no sign-up and nothing is sent anywhere — Paperstrike runs on your own machine and your keys stay there. You do need your own broker API keys for the market feed: Upstox (free, log in once a day) or Groww (Trade API plan with live data).",
+            a: "Not with us. There's no sign-up and nothing is sent anywhere — Paperstrike runs on your own machine and your keys stay there. You do need your own broker API keys for the market feed: Upstox (Pro plan with API data, log in once a day) or Groww (Trade API plan with live data). Both brokers charge for API market data.",
           },
           {
             q: "Is it really free and open source?",
