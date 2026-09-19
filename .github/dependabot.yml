@@ -6,6 +6,10 @@ updates:
     directory: /web
     schedule:
       interval: weekly
+    ignore:
+      # the types follow the oldest Node we support (20), not the newest
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       web:
         patterns: ["*"]
@@ -15,6 +19,10 @@ updates:
     directory: /data
     schedule:
       interval: weekly
+    ignore:
+      # proto/MarketDataFeed_pb2.py was generated for protobuf 5, and growwapi needs <6
+      - dependency-name: protobuf
+        update-types: ["version-update:semver-major"]
     groups:
       data:
         patterns: ["*"]
