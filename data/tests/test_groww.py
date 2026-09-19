@@ -2,10 +2,7 @@
 
 Run: python -m pytest tests   (from data/)
 """
-import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from providers.groww import Groww, _epoch, _fields, _prev_close, _walk  # noqa: E402
 

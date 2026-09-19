@@ -1,6 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "shadcn/tailwind.css";
+@import "./shadcn.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -59,6 +59,10 @@
   --color-ink-dark: #0e0f0c; /* Wise dark card surface — stays dark in both modes */
   --color-body: var(--body);
   --color-mute: var(--mute);
+  --color-gain: var(--gain);
+  --color-loss: var(--loss);
+  --color-on-positive: var(--on-positive);
+  --color-on-negative: var(--on-negative);
 }
 
 :root {
@@ -81,7 +85,8 @@
   --destructive: #d03238;
   --border: rgba(14, 15, 12, 0.1);
   --input: rgba(14, 15, 12, 0.1);
-  --ring: #9fe870;
+  /* focus rings: lime is ~1.5:1 on white, so light mode uses the deep brand green */
+  --ring: #163300;
   --chart-1: #9fe870;
   --chart-2: #38c8ff;
   --chart-3: #ffc091;
@@ -95,7 +100,7 @@
   --sidebar-accent: #e2f6d5;
   --sidebar-accent-foreground: #0e0f0c;
   --sidebar-border: rgba(14, 15, 12, 0.1);
-  --sidebar-ring: #9fe870;
+  --sidebar-ring: #163300;
   --ink-deep: #163300;
   --body: #454745;
   --mute: #737471; /* Wise ships #868685, but that's 3.6:1 on white — too low for the hint labels it's used on */
@@ -106,6 +111,13 @@
   --warning-content: #4a3b1c;
   --negative: #d03238;
   --negative-deep: #a72027;
+  /* P&L text. The bright --positive is ~2.9:1 on white, too faint for numbers
+     you have to read; these clear 4.5:1 on cards and on the page. */
+  --gain: #1d7532;
+  --loss: #c0282e;
+  /* text on solid positive / negative fills */
+  --on-positive: #0e0f0c;
+  --on-negative: #ffffff;
 }
 
 .dark {
@@ -158,6 +170,11 @@
   --warning-content: #4a3b1c;
   --negative: #ff5a5f;
   --negative-deep: #ff9ba0;
+  --gain: #4fce6e;
+  --loss: #ff5a5f;
+  --on-positive: #0e0f0c;
+  /* white on the lighter dark-mode red is ~3:1 */
+  --on-negative: #0e0f0c;
 }
 
 @layer base {
@@ -169,5 +186,25 @@
   }
   html {
     @apply font-sans;
+  }
+  /* A visible keyboard focus ring for plain buttons and links. Components that
+     draw their own ring (outline-none + ring-*) override this from the
+     utilities layer. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+/* Honour the OS "reduce motion" setting for CSS animations and transitions.
+   GSAP animations check the same media query in lib/motion.ts. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

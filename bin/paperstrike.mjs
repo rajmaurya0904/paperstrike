@@ -8,7 +8,7 @@
 // minutes). Later runs start in seconds. No dependencies of its own — Node
 // built-ins only, so npx has nothing to download beyond this package.
 import { spawn, spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -28,8 +28,6 @@ const opt = (name, fallback) => {
 const HOME = process.env.PAPERSTRIKE_HOME || path.join(os.homedir(), ".paperstrike");
 const STATE = path.join(HOME, "state");
 const APP = path.join(HOME, "app", version);
-const WEB_PORT = Number(opt("--port", 3000));
-const API_PORT = Number(opt("--api-port", 8000));
 
 const c = (code) => (s) => (process.stdout.isTTY ? `\x1b[${code}m${s}\x1b[0m` : s);
 const bold = c(1), dim = c(2), green = c(32), red = c(31), yellow = c(33);
@@ -39,6 +37,16 @@ const die = (s) => {
   log(`\n${red("✖")} ${s}`);
   process.exit(1);
 };
+
+function port(name, fallback) {
+  const raw = opt(name, String(fallback));
+  const n = Number(raw);
+  if (!/^\d+$/.test(raw) || n < 1 || n > 65535) die(`${name} needs a port number from 1 to 65535 (got "${raw}").`);
+  return n;
+}
+const WEB_PORT = port("--port", 3000);
+const API_PORT = port("--api-port", 8000);
+if (WEB_PORT === API_PORT) die("--port and --api-port must be different.");
 
 if (flag("--help") || flag("-h")) {
   log(`${bold("paperstrike")} ${dim("v" + version)} — practice NSE options with real data, zero real money
@@ -139,13 +147,16 @@ function installedFor() {
 }
 
 // ── main ───────────────────────────────────────────────────────────
-const [major] = process.versions.node.split(".").map(Number);
-if (major < 20) die(`Node 20 or newer is required (you have ${process.versions.node}). Get it at https://nodejs.org`);
+const [major, minor] = process.versions.node.split(".").map(Number);
+if (major < 20 || (major === 20 && minor < 9))
+  die(`Node 20.9 or newer is required (you have ${process.versions.node}). Get it at https://nodejs.org`);
 
 const py = findPython();
 if (!py) die("Python 3.10 or newer is required. Get it at https://www.python.org/downloads/ (tick “Add to PATH” on Windows).");
 
-mkdirSync(STATE, { recursive: true });
+// your broker keys live here: owner-only on macOS/Linux (Windows keeps them in your user profile)
+mkdirSync(STATE, { recursive: true, mode: 0o700 });
+if (!WIN) chmodSync(STATE, 0o700);
 const inst = installedFor();
 // the data-service URL is baked into the web build, so a new --api-port means a rebuild
 if (flag("--reinstall") || !inst || inst.apiPort !== API_PORT) install(py);

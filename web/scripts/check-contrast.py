@@ -1,4 +1,4 @@
-"""Check every fg/bg pair the dark theme actually renders, per WCAG 2.1."""
+"""Check every fg/bg pair the app actually renders, in both themes, per WCAG 2.1."""
 import re, sys
 
 css = open("src/app/globals.css", encoding="utf-8").read()
@@ -48,6 +48,15 @@ PAIRS = [
     ("card muted text",      "mute",        "card",      1.00),
     ("page text",            "foreground",  "background", 1.00),
     ("warning pill ink",     "warning-content", "warning", 1.00),
+    ("P&L gain on card",     "gain",        "card",       1.00),
+    ("P&L gain on page",     "gain",        "background", 1.00),
+    ("P&L loss on card",     "loss",        "card",       1.00),
+    ("P&L loss on page",     "loss",        "background", 1.00),
+    ("error text on panel",  "loss",        "secondary",  1.00),
+    ("up % pill",            "on-positive", "positive",   1.00),
+    ("down % pill",          "on-negative", "negative",   1.00),
+    ("focus ring on card",   "ring",        "card",       0.70),   # non-text: 3:1
+    ("focus ring on page",   "ring",        "background", 0.70),
 ]
 
 fails = 0

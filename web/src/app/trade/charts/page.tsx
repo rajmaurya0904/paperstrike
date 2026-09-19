@@ -15,9 +15,9 @@ import { NoData } from "@/components/no-data";
 import { Card, CardContent } from "@/components/ui/card";
 import { useMarket } from "@/lib/market";
 import { usePaper } from "@/lib/paper";
+import { DATA_URL } from "@/lib/site";
 import { cn } from "@/lib/utils";
 
-const DATA_URL = process.env.NEXT_PUBLIC_DATA_URL ?? "http://localhost:8000";
 const INTERVALS = ["1m", "5m", "15m", "1d"] as const;
 type Interval = (typeof INTERVALS)[number];
 const BUCKET_SEC: Record<Interval, number> = {
@@ -47,6 +47,19 @@ const BUILDUP = {
 } as const;
 type BuildupKind = keyof typeof BUILDUP;
 
+/** Ascending, one bar per timestamp, numbers only — lightweight-charts throws on
+ *  anything else, and one bad bar from a broker shouldn't take the page down. */
+function clean(raw: unknown): Candle[] {
+  if (!Array.isArray(raw)) return [];
+  const ok = raw.filter(
+    (c): c is Candle =>
+      !!c &&
+      [c.time, c.open, c.high, c.low, c.close].every((v) => typeof v === "number" && Number.isFinite(v))
+  );
+  ok.sort((a, b) => a.time - b.time);
+  return ok.filter((c, i) => i === 0 || c.time > ok[i - 1].time);
+}
+
 function classify(dPrice: number, dOi: number): BuildupKind {
   if (dOi === 0 || dPrice === 0) return "flat";
   if (dPrice > 0) return dOi > 0 ? "long" : "covering";
@@ -56,7 +69,7 @@ function classify(dPrice: number, dOi: number): BuildupKind {
 export default function ChartsPage() {
   const snap = useMarket();
   const paper = usePaper();
-  const [interval, setInterval] = useState<Interval>("5m");
+  const [tf, setTf] = useState<Interval>("5m");
   const [selKey, setSelKey] = useState("INDEX");
   const [candles, setCandles] = useState<Candle[] | null>(null);
   const [showOi, setShowOi] = useState(true);
@@ -128,11 +141,11 @@ export default function ChartsPage() {
       const key = selected.key === "INDEX" ? indexKey : selected.key;
       try {
         const r = await fetch(
-          `${DATA_URL}/candles?key=${encodeURIComponent(key)}&interval=${interval}`,
+          `${DATA_URL}/candles?key=${encodeURIComponent(key)}&interval=${tf}`,
           { signal: AbortSignal.timeout(6000) }
         );
         if (!r.ok) throw new Error();
-        const data: Candle[] = await r.json();
+        const data = clean(await r.json());
         if (!dead) setCandles(data); // an empty array is a real answer: no candles
       } catch {
         if (!dead) setCandles([]); // no invented bars — the chart says so instead
@@ -142,21 +155,26 @@ export default function ChartsPage() {
     return () => {
       dead = true;
     };
-  }, [selKey, interval, selected.key, indexKey]);
+  }, [selKey, tf, selected.key, indexKey]);
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-2xl font-black">Charts</h1>
         <IndexPicker />
-        <div className="ml-auto flex items-center rounded-full bg-secondary p-0.5">
+        <div
+          className="ml-auto flex items-center rounded-full bg-secondary p-0.5"
+          role="group"
+          aria-label="Candle interval"
+        >
           {INTERVALS.map((iv) => (
             <button
               key={iv}
-              onClick={() => setInterval(iv)}
+              aria-pressed={tf === iv}
+              onClick={() => setTf(iv)}
               className={cn(
                 "rounded-full px-3 py-1 text-xs font-semibold transition-colors",
-                interval === iv ? "bg-card shadow-sm" : "text-mute"
+                tf === iv ? "bg-card shadow-sm" : "text-mute"
               )}
             >
               {iv.toUpperCase()}
@@ -166,10 +184,11 @@ export default function ChartsPage() {
       </div>
 
       {/* instrument pills */}
-      <div className="flex flex-wrap items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Instrument">
         {choices.map((c) => (
           <button
             key={c.key}
+            aria-pressed={c.key === selected.key}
             onClick={() => setSelKey(c.key)}
             className={cn(
               "rounded-full px-3 py-1 text-xs font-semibold transition-colors",
@@ -183,6 +202,7 @@ export default function ChartsPage() {
         ))}
         {hasOi && (
           <button
+            aria-pressed={showOi}
             onClick={() => setShowOi((v) => !v)}
             className={cn(
               "ml-auto rounded-full px-3 py-1 text-xs font-semibold transition-colors",
@@ -220,9 +240,9 @@ export default function ChartsPage() {
           <CardContent className="p-2 sm:p-4">
             <CandleChart
               candles={candles}
-              intraday={interval !== "1d"}
+              intraday={tf !== "1d"}
               livePrice={livePrice}
-              bucketSec={BUCKET_SEC[interval]}
+              bucketSec={BUCKET_SEC[tf]}
               showOi={showOi && hasOi}
               entry={pos?.avgPrice ?? null}
               sl={pos?.stopLoss ?? null}
@@ -240,7 +260,7 @@ export default function ChartsPage() {
         <NoData what="Candles" />
       )}
       <p className="text-center text-[11px] text-mute">
-        {selected.label} · {interval.toUpperCase()} ·{" "}
+        {selected.label} · {tf.toUpperCase()} ·{" "}
         {showOi && hasOi ? "bars show open interest" : "bars show volume"} · live candle
         updates on every tick · scroll to zoom, drag to pan
         {pos && (pos.stopLoss || pos.target) ? " · drag the SL / TGT line to adjust" : ""}
@@ -501,5 +521,12 @@ function CandleChart({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entry != null, sl != null, tp != null, candles, intraday, showOi, resolvedTheme]);
 
-  return <div ref={el} className="w-full" />;
+  return (
+    <div
+      ref={el}
+      className="w-full"
+      role="img"
+      aria-label={`Candlestick chart, ${candles.length} bars, last close ${candles[candles.length - 1]?.close ?? "—"}`}
+    />
+  );
 }

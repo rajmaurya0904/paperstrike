@@ -1,7 +1,16 @@
 "use client";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { EquityCurve } from "@/components/equity-curve";
+import { RESET_ACCOUNT, useConfirm } from "@/components/confirm";
+import { ProfileForm } from "@/components/profile-form";
 import { Button } from "@/components/ui/button";
 import { usePaper } from "@/lib/paper";
 import { inr, pct, plClass, signed } from "@/lib/format";
@@ -9,6 +18,8 @@ import { cn } from "@/lib/utils";
 
 export default function PortfolioPage() {
   const paper = usePaper();
+  const [adding, setAdding] = useState(false);
+  const [ask, confirmDialog] = useConfirm();
 
   const stats = useMemo(() => {
     const closes = paper.trades.filter((t) => t.realized !== 0);
@@ -33,18 +44,19 @@ export default function PortfolioPage() {
     };
   }, [paper.trades, paper.account.equityHistory]);
 
-  const ret =
-    ((paper.equity - paper.account.startingBalance) / paper.account.startingBalance) *
-    100;
+  const ret = paper.account.startingBalance
+    ? ((paper.equity - paper.account.startingBalance) / paper.account.startingBalance) * 100
+    : 0;
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-black">Portfolio</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Profiles">
           {paper.profiles.map((p) => (
             <button
               key={p}
+              aria-pressed={p === paper.activeProfile}
               onClick={() => paper.switchProfile(p)}
               className={cn(
                 "rounded-full px-3 py-1 text-xs font-semibold",
@@ -60,12 +72,7 @@ export default function PortfolioPage() {
             size="sm"
             variant="outline"
             className="rounded-3xl text-xs font-semibold"
-            onClick={() => {
-              const name = prompt("New profile name?");
-              if (!name?.trim()) return;
-              const bal = +(prompt("Starting virtual capital (₹)?", "1000000") ?? "");
-              if (bal > 0) paper.createProfile(name.trim(), bal);
-            }}
+            onClick={() => setAdding(true)}
           >
             + Profile
           </Button>
@@ -112,9 +119,8 @@ export default function PortfolioPage() {
           <Button
             variant="destructive"
             className="rounded-3xl font-semibold"
-            onClick={() => {
-              if (confirm("Reset this paper account? All history will be lost."))
-                paper.resetAccount();
+            onClick={async () => {
+              if (await ask(RESET_ACCOUNT)) paper.resetAccount();
             }}
           >
             Reset
@@ -126,6 +132,26 @@ export default function PortfolioPage() {
         {paper.account.name}&apos;s account · started{" "}
         {new Date(paper.account.createdAt).toLocaleDateString()}
       </p>
+
+      <Dialog open={adding} onOpenChange={setAdding}>
+        <DialogContent className="gap-5 rounded-3xl p-6 sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-black">New profile</DialogTitle>
+            <DialogDescription className="text-sm text-body">
+              A separate paper account with its own capital, positions and history.
+            </DialogDescription>
+          </DialogHeader>
+          <ProfileForm
+            existing={paper.profiles}
+            submitLabel="Create profile"
+            onSubmit={(name, capital) => {
+              paper.createProfile(name, capital);
+              setAdding(false);
+            }}
+          />
+        </DialogContent>
+      </Dialog>
+      {confirmDialog}
     </div>
   );
 }

@@ -24,3 +24,6 @@ Thumbs.db
 .idea/
 .venv/
 .pytest_cache/
+
+# launch video renders
+brag-output*/

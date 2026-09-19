@@ -32,8 +32,9 @@ import {
   type Range,
 } from "./breakout";
 import { MarketSnapshot, OptionQuote } from "./types";
+import { DATA_URL } from "./site";
+import { readJSON, writeLS } from "./storage";
 
-const DATA_URL = process.env.NEXT_PUBLIC_DATA_URL ?? "http://localhost:8000";
 const LS_PLANS = "pt.autotrade";
 
 export type PlanStatus =
@@ -121,12 +122,8 @@ export function AutoTradeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let dead = false;
     (async () => {
-      let saved: Plan[] = [];
-      try {
-        saved = JSON.parse(localStorage.getItem(LS_PLANS) ?? "[]");
-      } catch {
-        // corrupt entry — start clean rather than trap the user on a crash
-      }
+      // a corrupt entry starts clean rather than trapping the user on a crash
+      const saved = readJSON<Plan[]>(LS_PLANS, [], (v): v is Plan[] => Array.isArray(v));
       if (dead) return;
       setPlans(saved);
       setLoaded(true);
@@ -137,7 +134,7 @@ export function AutoTradeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (loaded) localStorage.setItem(LS_PLANS, JSON.stringify(plans));
+    if (loaded) writeLS(LS_PLANS, JSON.stringify(plans));
   }, [plans, loaded]);
 
   const arm = useCallback((p: NewPlan) => {

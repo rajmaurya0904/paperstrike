@@ -1,0 +1,26 @@
+# Weekly dependency updates, grouped so they arrive as a few PRs, not dozens.
+# Security fixes are raised as soon as an advisory lands, regardless of this schedule.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    groups:
+      web:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: pip
+    directory: /data
+    schedule:
+      interval: weekly
+    groups:
+      data:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

@@ -8,7 +8,7 @@ Trade the **live** NIFTY, BANK NIFTY and SENSEX option chains with a virtual acc
 Bring your own **Upstox** or **Groww** API key. Everything runs on your own machine.
 
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
-[![Node 20+](https://img.shields.io/badge/node-20%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org)
+[![Node 20.9+](https://img.shields.io/badge/node-20.9%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org)
 [![Brokers](https://img.shields.io/badge/brokers-Upstox%20%7C%20Groww-8b5cf6)](#-bring-your-own-key)
 [![GitHub stars](https://img.shields.io/github/stars/rajmaurya0904/paperstrike?style=social)](https://github.com/rajmaurya0904/paperstrike/stargazers)
@@ -23,7 +23,7 @@ Bring your own **Upstox** or **Groww** API key. Everything runs on your own mach
 
 ## ⚡ Quick start
 
-You need [Node.js 20+](https://nodejs.org) and [Python 3.10+](https://www.python.org/downloads/).
+You need [Node.js 20.9+](https://nodejs.org) and [Python 3.10+](https://www.python.org/downloads/).
 Then run one command:
 
 ```bash
@@ -203,8 +203,10 @@ login. Don't expose the data service to the internet. See [SECURITY.md](SECURITY
 ## 🛡️ Security
 
 - The data service listens only on `127.0.0.1`, and Docker publishes its ports on `127.0.0.1` too.
-- It checks the Host header and the Origin, which blocks other websites and DNS-rebinding attacks.
-- Secrets never leave the data service, and the Upstox login uses an OAuth `state` check.
+- It checks the Host header and the Origin on every request and websocket, which blocks other websites and DNS-rebinding attacks.
+- Secrets never leave the data service. The keys file is owner-only, and the Upstox login uses an OAuth `state` check.
+- The web app sends a strict Content-Security-Policy and refuses to be framed, so another site can't overlay or click through your trading screens.
+- Dependencies are pinned, and Dependabot proposes updates.
 
 To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
@@ -215,8 +217,8 @@ Issues and pull requests are welcome, and new broker adapters especially. Read
 invent a price".
 
 ```bash
-cd web && npm run check && npm run build      # charges, margin, strategies, breakout, contrast
-cd data && python -m pytest tests
+cd web && npm run lint && npm run check && npm run build   # charges, margin, strategies, breakout, equity, contrast
+cd data && python -m pytest tests                          # broker payloads + the local-only guards
 ```
 
 ## ⚠️ Disclaimer

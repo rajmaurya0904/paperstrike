@@ -6,6 +6,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { IndexPicker } from "@/components/index-picker";
 import { NoData } from "@/components/no-data";
 import { Reveal } from "@/components/reveal";
+import { PanelButton, SidePanel } from "@/components/side-panel";
 import { useMarket } from "@/lib/market";
 import { usePaper } from "@/lib/paper";
 import { DEFAULT_CUTOFF_MIN, useAutoTrade, type Plan } from "@/lib/autotrade";
@@ -50,6 +51,7 @@ export default function StrategiesPage() {
           type="single"
           value={group}
           onValueChange={(v) => v && setGroup(v as StrategyGroup | "all")}
+          aria-label="Filter strategies"
           className="ml-auto rounded-full bg-secondary p-0.5"
         >
           {GROUPS.map((g) => (
@@ -231,120 +233,104 @@ function BreakoutBuilder({ s, onClose }: { s: Strategy; onClose: () => void }) {
   ).padStart(2, "0")}`;
 
   return (
-    <>
-      <div className="fixed inset-0 z-40 bg-ink-dark/30" onClick={onClose} />
-      <div className="fixed right-0 top-0 z-50 flex h-full w-full max-w-md flex-col gap-4 overflow-y-auto bg-card p-6 shadow-2xl">
-        <div className="flex items-start justify-between">
-          <div>
-            <h2 className="text-xl font-black">{s.name}</h2>
-            <p className="text-sm text-body">{s.about}</p>
-          </div>
-          <button
-            onClick={onClose}
-            className="shrink-0 rounded-full bg-secondary px-2.5 py-1 text-sm font-bold"
-          >
-            ✕
-          </button>
-        </div>
+    <SidePanel title={s.name} subtitle={s.about} onClose={onClose} wide>
+      <div className="rounded-3xl bg-secondary p-4 text-sm">
+        <p className="font-semibold">How it fires</p>
+        <ol className="mt-1 list-decimal pl-4 text-xs text-body">
+          <li>Records the {snap.label} high/low from 09:15 to {readyAt}.</li>
+          <li>Watches spot until it closes outside that range.</li>
+          <li>Above the high → buys a CE. Below the low → buys a PE.</li>
+          <li>Fires once, then stops. Expires unfired at 15:00.</li>
+        </ol>
+      </div>
 
-        <div className="rounded-3xl bg-secondary p-4 text-sm">
-          <p className="font-semibold">How it fires</p>
-          <ol className="mt-1 list-decimal pl-4 text-xs text-body">
-            <li>Records the {snap.label} high/low from 09:15 to {readyAt}.</li>
-            <li>Watches spot until it closes outside that range.</li>
-            <li>Above the high → buys a CE. Below the low → buys a PE.</li>
-            <li>Fires once, then stops. Expires unfired at 15:00.</li>
-          </ol>
-        </div>
-
-        <div>
-          <p className="mb-1.5 text-sm font-semibold">Reference window</p>
-          <ToggleGroup
-            type="single"
-            value={String(minutes)}
-            onValueChange={(v) => v && setMinutes(+v)}
-            className="grid grid-cols-4 gap-2"
-          >
-            {WINDOWS.map((m) => (
-              <ToggleGroupItem
-                key={m}
-                value={String(m)}
-                className="h-10 rounded-3xl bg-secondary text-xs font-bold data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
-              >
-                {m}m
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-          <p className="mt-1 text-[11px] text-mute">
-            Range completes at {readyAt}
-            {ready ? " — already available." : " — the plan waits until then."}
-          </p>
-        </div>
-
-        <Stepper
-          label={`Lots (${snap.lot}/lot)`}
-          value={lots}
-          onChange={(d) => setLots((v) => Math.max(1, Math.min(50, v + d)))}
-          render={String}
-        />
-        <Stepper
-          label="Strike from ATM"
-          value={offset}
-          onChange={(d) => setOffset((v) => Math.max(0, Math.min(10, v + d)))}
-          render={(v) => (v === 0 ? "ATM" : `${v} OTM`)}
-        />
-
-        <div className="rounded-3xl bg-secondary p-4">
-          <p className="text-sm font-semibold">Stop-loss &amp; target</p>
-          <p className="mt-0.5 text-[11px] text-mute">
-            Percent of the premium paid when it triggers.
-          </p>
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <label className="flex flex-col gap-1 text-xs font-semibold text-mute">
-              Stop-loss %
-              <Input
-                type="number"
-                value={sl}
-                onChange={(e) => setSl(e.target.value)}
-                className="font-mono"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-xs font-semibold text-mute">
-              Target %
-              <Input
-                type="number"
-                value={tp}
-                onChange={(e) => setTp(e.target.value)}
-                className="font-mono"
-              />
-            </label>
-          </div>
-        </div>
-
-        <Button
-          onClick={() => {
-            arm({
-              name: s.name,
-              indexId: snap.id,
-              rangeMinutes: minutes,
-              lots,
-              offset,
-              slPct: +sl || 0,
-              tpPct: +tp || 0,
-              cutoffMin: DEFAULT_CUTOFF_MIN,
-            });
-            onClose();
-          }}
-          className="mt-auto h-12 shrink-0 rounded-3xl text-base font-bold"
+      <div>
+        <p className="mb-1.5 text-sm font-semibold">Reference window</p>
+        <ToggleGroup
+          type="single"
+          value={String(minutes)}
+          onValueChange={(v) => v && setMinutes(+v)}
+          aria-label="Reference window"
+          className="grid grid-cols-4 gap-2"
         >
-          Arm plan
-        </Button>
-        <p className="text-center text-[11px] text-mute">
-          Keeps watching on any page, and survives a refresh. Cancel it from the
-          Breakout plans list.
+          {WINDOWS.map((m) => (
+            <ToggleGroupItem
+              key={m}
+              value={String(m)}
+              className="h-10 rounded-3xl bg-secondary text-xs font-bold data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+            >
+              {m}m
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+        <p className="mt-1 text-[11px] text-mute">
+          Range completes at {readyAt}
+          {ready ? " — already available." : " — the plan waits until then."}
         </p>
       </div>
-    </>
+
+      <Stepper
+        label={`Lots (${snap.lot}/lot)`}
+        value={lots}
+        onChange={(d) => setLots((v) => Math.max(1, Math.min(50, v + d)))}
+        render={String}
+      />
+      <Stepper
+        label="Strike from ATM"
+        value={offset}
+        onChange={(d) => setOffset((v) => Math.max(0, Math.min(10, v + d)))}
+        render={(v) => (v === 0 ? "ATM" : `${v} OTM`)}
+      />
+
+      <div className="rounded-3xl bg-secondary p-4">
+        <p className="text-sm font-semibold">Stop-loss &amp; target</p>
+        <p className="mt-0.5 text-[11px] text-mute">
+          Percent of the premium paid when it triggers.
+        </p>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <label className="flex flex-col gap-1 text-xs font-semibold text-mute">
+            Stop-loss %
+            <Input
+              type="number"
+              value={sl}
+              onChange={(e) => setSl(e.target.value)}
+              className="font-mono"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-semibold text-mute">
+            Target %
+            <Input
+              type="number"
+              value={tp}
+              onChange={(e) => setTp(e.target.value)}
+              className="font-mono"
+            />
+          </label>
+        </div>
+      </div>
+
+      <PanelButton
+        onClick={() => {
+          arm({
+            name: s.name,
+            indexId: snap.id,
+            rangeMinutes: minutes,
+            lots,
+            offset,
+            slPct: +sl || 0,
+            tpPct: +tp || 0,
+            cutoffMin: DEFAULT_CUTOFF_MIN,
+          });
+        }}
+        className="mt-auto h-12 shrink-0 rounded-3xl text-base font-bold"
+      >
+        Arm plan
+      </PanelButton>
+      <p className="text-center text-[11px] text-mute">
+        Keeps watching on any page, and survives a refresh. Cancel it from the
+        Breakout plans list.
+      </p>
+    </SidePanel>
   );
 }
 
@@ -405,158 +391,141 @@ function Builder({ s, onClose }: { s: Strategy; onClose: () => void }) {
         target: b.target,
       });
     }
-    onClose();
   };
 
   return (
-    <>
-      <div className="fixed inset-0 z-40 bg-ink-dark/30" onClick={onClose} />
-      <div className="fixed right-0 top-0 z-50 flex h-full w-full max-w-md flex-col gap-4 overflow-y-auto bg-card p-6 shadow-2xl">
-        <div className="flex items-start justify-between">
-          <div>
-            <h2 className="text-xl font-black">{s.name}</h2>
-            <p className="text-sm text-body">{s.about}</p>
+    <SidePanel title={s.name} subtitle={s.about} onClose={onClose} wide>
+      {!legs ? (
+        <p className="rounded-3xl bg-negative/10 p-4 text-sm font-semibold text-negative-deep">
+          These strikes fall outside the loaded chain. Re-centre the structure or widen the
+          chain window.
+        </p>
+      ) : (
+        <>
+          {a && <Payoff a={a} spot={snap.spot} />}
+
+          {/* size + re-centre */}
+          <div className="flex flex-col gap-2">
+            <Stepper
+              label={`Lots (${snap.lot}/lot)`}
+              value={lots}
+              onChange={(d) => setLots((v) => Math.max(1, Math.min(50, v + d)))}
+              render={String}
+            />
+            <Stepper
+              label="Shift strikes"
+              value={shift}
+              onChange={(d) => setShift((v) => v + d)}
+              render={(v) => (v === 0 ? "ATM" : v > 0 ? `+${v}` : String(v))}
+            />
           </div>
-          <button
-            onClick={onClose}
-            className="shrink-0 rounded-full bg-secondary px-2.5 py-1 text-sm font-bold"
-          >
-            ✕
-          </button>
-        </div>
 
-        {!legs ? (
-          <p className="rounded-3xl bg-negative/10 p-4 text-sm font-semibold text-negative-deep">
-            These strikes fall outside the loaded chain. Re-centre the structure or widen the
-            chain window.
-          </p>
-        ) : (
-          <>
-            {a && <Payoff a={a} spot={snap.spot} />}
-
-            {/* size + re-centre */}
-            <div className="flex flex-col gap-2">
-              <Stepper
-                label={`Lots (${snap.lot}/lot)`}
-                value={lots}
-                onChange={(d) => setLots((v) => Math.max(1, Math.min(50, v + d)))}
-                render={String}
-              />
-              <Stepper
-                label="Shift strikes"
-                value={shift}
-                onChange={(d) => setShift((v) => v + d)}
-                render={(v) => (v === 0 ? "ATM" : v > 0 ? `+${v}` : String(v))}
-              />
-            </div>
-
-            {/* legs */}
-            <div className="rounded-3xl bg-secondary p-3">
-              {legs.map((l, i) => (
-                <div key={i} className="flex items-center justify-between py-1 text-sm">
-                  <span className="flex items-center gap-2">
-                    <span
-                      className={cn(
-                        "rounded-full px-2 py-0.5 text-[10px] font-bold",
-                        l.side === "BUY"
-                          ? "bg-accent text-positive-deep"
-                          : "bg-negative/10 text-negative-deep"
-                      )}
-                    >
-                      {l.side}
-                    </span>
-                    <span className="font-semibold">
-                      {l.strike} {l.opt}
-                    </span>
-                    <span className="text-xs text-mute">×{l.lots}</span>
+          {/* legs */}
+          <div className="rounded-3xl bg-secondary p-3">
+            {legs.map((l, i) => (
+              <div key={i} className="flex items-center justify-between py-1 text-sm">
+                <span className="flex items-center gap-2">
+                  <span
+                    className={cn(
+                      "rounded-full px-2 py-0.5 text-[10px] font-bold",
+                      l.side === "BUY"
+                        ? "bg-accent text-positive-deep"
+                        : "bg-negative/10 text-negative-deep"
+                    )}
+                  >
+                    {l.side}
                   </span>
-                  <span className="font-mono text-sm">{px(l.price)}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* per-leg bracket */}
-            <div className="rounded-3xl bg-secondary p-4">
-              <p className="text-sm font-semibold">Stop-loss &amp; target</p>
-              <p className="mt-0.5 text-[11px] text-mute">
-                Percent of each leg&apos;s own premium. Leave blank for none.
-              </p>
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                <label className="flex flex-col gap-1 text-xs font-semibold text-mute">
-                  Stop-loss %
-                  <Input
-                    type="number"
-                    value={sl}
-                    onChange={(e) => setSl(e.target.value)}
-                    placeholder="30"
-                    className="font-mono"
-                  />
-                </label>
-                <label className="flex flex-col gap-1 text-xs font-semibold text-mute">
-                  Target %
-                  <Input
-                    type="number"
-                    value={tp}
-                    onChange={(e) => setTp(e.target.value)}
-                    placeholder="50"
-                    className="font-mono"
-                  />
-                </label>
+                  <span className="font-semibold">
+                    {l.strike} {l.opt}
+                  </span>
+                  <span className="text-xs text-mute">×{l.lots}</span>
+                </span>
+                <span className="font-mono text-sm">{px(l.price)}</span>
               </div>
-            </div>
+            ))}
+          </div>
 
-            {/* numbers */}
-            <div className="rounded-3xl bg-accent p-4 text-sm">
-              <Row
-                k={debit >= 0 ? "Net debit" : "Net credit"}
-                v={inr(Math.abs(debit))}
-              />
-              <Row k="Charges & taxes" v={inr(charges)} />
-              {margin > 0 && <Row k="Margin blocked" v={inr(margin)} />}
-              <div className="mt-1.5 border-t border-foreground/10 pt-1.5">
-                <Row
-                  k="Max profit"
-                  v={a?.maxProfit == null ? "Unlimited" : inr(a.maxProfit)}
-                />
-                <Row
-                  k="Max loss"
-                  v={a?.maxLoss == null ? "Unlimited" : inr(Math.abs(a.maxLoss))}
-                />
-                <Row
-                  k="Breakeven"
-                  v={
-                    a?.breakevens.length
-                      ? a.breakevens.map((b) => Math.round(b)).join(" · ")
-                      : "—"
-                  }
-                />
-                <Row k="Available" v={inr(paper.availableMargin)} />
-              </div>
-              {shortfall > 0 && (
-                <p className="mt-1 text-xs font-semibold text-negative">
-                  Short by {inr(shortfall)} — reduce lots or free up margin.
-                </p>
-              )}
-            </div>
-
-            <Button
-              onClick={deploy}
-              disabled={blocked}
-              className="mt-auto h-12 shrink-0 rounded-3xl text-base font-bold"
-            >
-              {!open
-                ? `${marketStatus().label} — trading shut`
-                : shortfall > 0
-                  ? "Insufficient margin"
-                  : `Deploy ${legs.length} leg${legs.length > 1 ? "s" : ""}`}
-            </Button>
-            <p className="text-center text-[11px] text-mute">
-              Places every leg as a market order. Manage or exit them from Positions.
+          {/* per-leg bracket */}
+          <div className="rounded-3xl bg-secondary p-4">
+            <p className="text-sm font-semibold">Stop-loss &amp; target</p>
+            <p className="mt-0.5 text-[11px] text-mute">
+              Percent of each leg&apos;s own premium. Leave blank for none.
             </p>
-          </>
-        )}
-      </div>
-    </>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <label className="flex flex-col gap-1 text-xs font-semibold text-mute">
+                Stop-loss %
+                <Input
+                  type="number"
+                  value={sl}
+                  onChange={(e) => setSl(e.target.value)}
+                  placeholder="30"
+                  className="font-mono"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs font-semibold text-mute">
+                Target %
+                <Input
+                  type="number"
+                  value={tp}
+                  onChange={(e) => setTp(e.target.value)}
+                  placeholder="50"
+                  className="font-mono"
+                />
+              </label>
+            </div>
+          </div>
+
+          {/* numbers */}
+          <div className="rounded-3xl bg-accent p-4 text-sm">
+            <Row
+              k={debit >= 0 ? "Net debit" : "Net credit"}
+              v={inr(Math.abs(debit))}
+            />
+            <Row k="Charges & taxes" v={inr(charges)} />
+            {margin > 0 && <Row k="Margin blocked" v={inr(margin)} />}
+            <div className="mt-1.5 border-t border-foreground/10 pt-1.5">
+              <Row
+                k="Max profit"
+                v={a?.maxProfit == null ? "Unlimited" : inr(a.maxProfit)}
+              />
+              <Row
+                k="Max loss"
+                v={a?.maxLoss == null ? "Unlimited" : inr(Math.abs(a.maxLoss))}
+              />
+              <Row
+                k="Breakeven"
+                v={
+                  a?.breakevens.length
+                    ? a.breakevens.map((b) => Math.round(b)).join(" · ")
+                    : "—"
+                }
+              />
+              <Row k="Available" v={inr(paper.availableMargin)} />
+            </div>
+            {shortfall > 0 && (
+              <p className="mt-1 text-xs font-semibold text-loss">
+                Short by {inr(shortfall)} — reduce lots or free up margin.
+              </p>
+            )}
+          </div>
+
+          <PanelButton
+            onClick={deploy}
+            disabled={blocked}
+            className="mt-auto h-12 shrink-0 rounded-3xl text-base font-bold"
+          >
+            {!open
+              ? `${marketStatus().label} — trading shut`
+              : shortfall > 0
+                ? "Insufficient margin"
+                : `Deploy ${legs.length} leg${legs.length > 1 ? "s" : ""}`}
+          </PanelButton>
+          <p className="text-center text-[11px] text-mute">
+            Places every leg as a market order. Manage or exit them from Positions.
+          </p>
+        </>
+      )}
+    </SidePanel>
   );
 }
 
@@ -582,7 +551,13 @@ function Payoff({
 
   return (
     <div className="rounded-3xl bg-secondary p-3">
-      <svg viewBox={`0 0 ${W} ${H}`} className="h-28 w-full" preserveAspectRatio="none">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="h-28 w-full"
+        preserveAspectRatio="none"
+        role="img"
+        aria-label={`Payoff at expiry from ${Math.round(x0)} to ${Math.round(x1)}, spot ${Math.round(spot)}`}
+      >
         {/* zero line */}
         {y0 < 0 && y1 > 0 && (
           <line
@@ -639,17 +614,28 @@ function Stepper({
     <div className="flex items-center justify-between rounded-3xl bg-secondary px-4 py-2.5">
       <span className="text-sm font-semibold">{label}</span>
       <div className="flex items-center gap-3">
-        <Btn onClick={() => onChange(-1)}>−</Btn>
-        <span className="w-10 text-center font-mono text-sm font-bold">{render(value)}</span>
-        <Btn onClick={() => onChange(1)}>+</Btn>
+        <Btn label={`${label}: less`} onClick={() => onChange(-1)}>−</Btn>
+        <span className="w-10 text-center font-mono text-sm font-bold" aria-live="polite">
+          {render(value)}
+        </span>
+        <Btn label={`${label}: more`} onClick={() => onChange(1)}>+</Btn>
       </div>
     </div>
   );
 }
 
-const Btn = ({ onClick, children }: { onClick: () => void; children: React.ReactNode }) => (
+const Btn = ({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) => (
   <button
     onClick={onClick}
+    aria-label={label}
     className="h-8 w-8 rounded-full bg-card font-bold ring-1 ring-border transition-transform active:scale-90"
   >
     {children}

@@ -20,6 +20,7 @@ import { compact, px } from "@/lib/format";
 const PAGES = [
   { href: "/trade", label: "Dashboard" },
   { href: "/trade/chain", label: "Option chain" },
+  { href: "/trade/strategies", label: "Strategies" },
   { href: "/trade/charts", label: "Charts" },
   { href: "/trade/positions", label: "Positions & orders" },
   { href: "/trade/portfolio", label: "Portfolio" },

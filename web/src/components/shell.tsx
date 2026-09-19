@@ -1,8 +1,9 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
 import { Menu, RotateCcw, Search, Settings, UserRound } from "lucide-react";
+import { RESET_ACCOUNT, useConfirm } from "@/components/confirm";
 import { Palette } from "@/components/palette";
 import { PriceFlow } from "@/components/price-flow";
 import { ThemeToggle } from "@/components/theme";
@@ -19,7 +20,7 @@ import {
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
-import { marketStatus } from "@/lib/hours";
+import { useMarketStatus } from "@/lib/use-market-status";
 import { useAllMarkets, useFeedStatus, useIndexPicker, useMarket } from "@/lib/market";
 import { usePaper } from "@/lib/paper";
 import { Num } from "@/components/num";
@@ -35,6 +36,15 @@ const NAV = [
   { href: "/trade/portfolio", label: "Portfolio" },
 ] as const;
 
+/** "RM" for "Raj Maurya", "AS" for "Asha". */
+function initialsOf(name: string) {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  const two = words.length > 1 ? words[0][0] + words[words.length - 1][0] : name.trim().slice(0, 2);
+  return two.toUpperCase();
+}
+
+const isMac = () => /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+
 export function Shell({ children }: { children: React.ReactNode }) {
   const snap = useMarket();
   const all = useAllMarkets();
@@ -43,17 +53,24 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const paper = usePaper();
   const path = usePathname();
   const [navOpen, setNavOpen] = useState(false);
-  const [{ open, label: statusLabel }, setStatus] = useState(marketStatus);
-
-  useEffect(() => {
-    const t = setInterval(() => setStatus(marketStatus()), 15000);
-    return () => clearInterval(t);
-  }, []);
-
-  const initials = paper.account.name.slice(0, 2).toUpperCase();
+  const session = useMarketStatus();
+  const open = session?.open ?? false;
+  const [ask, confirmDialog] = useConfirm();
+  const shortcut = useSyncExternalStore(
+    () => () => {},
+    () => (isMac() ? "⌘K" : "Ctrl K"),
+    () => "Ctrl K"
+  );
+  const current = (href: string) => (path === href ? ("page" as const) : undefined);
 
   return (
     <div className="flex min-h-screen flex-col">
+      <a
+        href="#main"
+        className="sr-only z-50 rounded-full bg-primary px-4 py-2 text-sm font-bold text-primary-foreground focus:not-sr-only focus:fixed focus:left-3 focus:top-3"
+      >
+        Skip to content
+      </a>
       {/* glassmorphic nav — translucent surface + saturated blur over scrolling content */}
       <header className="sticky top-0 z-40 border-b border-border/60 bg-card/60 shadow-[0_1px_0_0_rgba(255,255,255,0.4)_inset] backdrop-blur-xl backdrop-saturate-150 dark:bg-card/50 dark:shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset]">
         {/* row 1 */}
@@ -74,6 +91,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                   <Link
                     key={n.href}
                     href={n.href}
+                    aria-current={current(n.href)}
                     onClick={() => setNavOpen(false)}
                     className={cn(
                       "rounded-2xl px-4 py-2.5 text-sm font-semibold transition-colors",
@@ -87,8 +105,14 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 ))}
                 <Link
                   href="/trade/settings"
+                  aria-current={current("/trade/settings")}
                   onClick={() => setNavOpen(false)}
-                  className="rounded-2xl px-4 py-2.5 text-sm font-semibold text-body hover:bg-secondary"
+                  className={cn(
+                    "rounded-2xl px-4 py-2.5 text-sm font-semibold transition-colors",
+                    path === "/trade/settings"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-body hover:bg-secondary"
+                  )}
                 >
                   Settings
                 </Link>
@@ -111,7 +135,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <Search className="h-3.5 w-3.5" />
             Search strikes
             <kbd className="rounded bg-card px-1.5 py-0.5 font-mono text-[10px]">
-              Ctrl K
+              {shortcut}
             </kbd>
           </button>
 
@@ -120,6 +144,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               <Link
                 key={n.href}
                 href={n.href}
+                aria-current={current(n.href)}
                 className={cn(
                   "rounded-full px-3 py-1.5 text-[13px] font-semibold transition-colors",
                   path === n.href
@@ -141,6 +166,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               <Link
                 href="/trade/settings"
                 aria-label="Settings"
+                aria-current={current("/trade/settings")}
                 className={cn(
                   "rounded-full p-2 transition-colors",
                   path === "/trade/settings"
@@ -154,10 +180,13 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <TooltipContent>Settings & broker keys</TooltipContent>
           </Tooltip>
 
-          {/* account menu */}
-          <DropdownMenu>
+          {/* account menu — not modal, so the reset dialog it opens gets focus cleanly */}
+          <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
-              <button className="flex items-center gap-2 rounded-full border-l border-border pl-3 transition-opacity hover:opacity-80">
+              <button
+                aria-label={`Account menu, ${paper.account.name}`}
+                className="flex items-center gap-2 rounded-full border-l border-border pl-3 transition-opacity hover:opacity-80"
+              >
                 <div className="hidden text-right sm:block">
                   <div className="text-[10px] font-semibold uppercase leading-tight text-mute">
                     Equity
@@ -170,7 +199,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 </div>
                 <Avatar className="size-8">
                   <AvatarFallback className="bg-primary text-xs font-bold text-primary-foreground">
-                    {initials}
+                    {initialsOf(paper.account.name)}
                   </AvatarFallback>
                 </Avatar>
               </button>
@@ -207,9 +236,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 variant="destructive"
-                onClick={() => {
-                  if (confirm("Reset this paper account? All history will be lost."))
-                    paper.resetAccount();
+                onSelect={async () => {
+                  if (await ask(RESET_ACCOUNT)) paper.resetAccount();
                 }}
               >
                 <RotateCcw className="h-4 w-4" />
@@ -227,6 +255,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 <button
                   key={ix.id}
                   onClick={() => setIndex(ix.id)}
+                  aria-pressed={ix.id === indexId}
                   className={cn(
                     "flex shrink-0 items-center gap-2 rounded-full px-2 py-0.5 transition-colors hover:bg-card",
                     ix.id === indexId && "bg-card shadow-sm"
@@ -265,7 +294,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                         open ? "bg-positive" : "bg-mute"
                       )}
                     />
-                    {statusLabel}
+                    {session?.label ?? "NSE"}
                   </span>
                 </TooltipTrigger>
                 <TooltipContent>NSE hours 09:15–15:30 IST, Mon–Fri</TooltipContent>
@@ -296,9 +325,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
       <Palette />
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">{children}</main>
+      {confirmDialog}
+      <main id="main" tabIndex={-1} className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 outline-none">
+        {children}
+      </main>
       <div className="mt-10">
-        <Footer />
+        <Footer feed={feed} />
       </div>
       {feed === "offline" && (
         <Link

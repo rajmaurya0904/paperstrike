@@ -50,12 +50,13 @@ export function PriceFlow({
       {diffPct !== undefined && (
         <span
           className={cn(
-            "inline-flex items-center rounded-full px-2 py-0.5 text-sm font-semibold text-white transition-colors duration-300",
-            up ? "bg-positive" : "bg-negative",
+            "inline-flex items-center rounded-full px-2 py-0.5 text-sm font-semibold transition-colors duration-300",
+            up ? "bg-positive text-on-positive" : "bg-negative text-on-negative",
             pillClassName
           )}
         >
           <ArrowUp
+            aria-hidden
             className={cn(
               "mr-0.5 size-[0.85em] transition-transform duration-500",
               !up && "-rotate-180"
@@ -63,6 +64,7 @@ export function PriceFlow({
             strokeWidth={3}
             absoluteStrokeWidth
           />
+          <span className="sr-only">{up ? "up" : "down"} </span>
           {Math.abs(diffPct).toFixed(2)}%
         </span>
       )}

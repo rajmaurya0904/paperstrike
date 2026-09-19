@@ -1,8 +1,5 @@
 "use client";
-import { useMemo, useRef, useState } from "react";
-import gsap from "gsap";
-import { useGSAP } from "@gsap/react";
-import { Button } from "@/components/ui/button";
+import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -12,6 +9,7 @@ import { ChainPulse, MostTraded } from "@/components/activity";
 import { IndexPicker } from "@/components/index-picker";
 import { NoData } from "@/components/no-data";
 import { Num, tickBg, useTickDir } from "@/components/num";
+import { PanelButton, SidePanel } from "@/components/side-panel";
 import { findQuote, useAllMarkets, useMarket } from "@/lib/market";
 import { usePaper } from "@/lib/paper";
 import { OptionQuote, OptionSide, OrderSide, OrderType } from "@/lib/types";
@@ -33,7 +31,7 @@ export default function ChainPage() {
   const paper = usePaper();
   const [sel, setSel] = useState<Sel | null>(null);
   const [greeks, setGreeks] = useState(false);
-  const [window, setWindow] = useState<number>(10); // strikes each side of ATM; 0 = all
+  const [span, setSpan] = useState<number>(10); // strikes each side of ATM; 0 = all
   // scalper mode: one-tap market orders straight off the chain, no ticket
   const [scalp, setScalp] = useState(false);
   const [scalpLots, setScalpLots] = useState(1);
@@ -41,7 +39,7 @@ export default function ChainPage() {
 
   const m = useMemo(() => (snap?.rows.length ? metrics(snap) : null), [snap]);
 
-  if (!snap) return <NoData what="The option chain" />;
+  if (!snap?.rows.length) return <NoData what="The option chain" />;
 
   // click a strike: fire instantly in scalp mode, else open the ticket
   const pick = (q: OptionQuote, side: OptionSide, strike: number) =>
@@ -60,9 +58,7 @@ export default function ChainPage() {
   ).strike;
   const atmIdx = snap.rows.findIndex((r) => r.strike === atm);
   const rows =
-    window > 0
-      ? snap.rows.slice(Math.max(0, atmIdx - window), atmIdx + window + 1)
-      : snap.rows;
+    span > 0 ? snap.rows.slice(Math.max(0, atmIdx - span), atmIdx + span + 1) : snap.rows;
   const maxOi = Math.max(...rows.flatMap((r) => [r.ce.oi, r.pe.oi]), 1);
 
   return (
@@ -88,8 +84,9 @@ export default function ChainPage() {
         <div className="ml-auto flex items-center gap-3">
           <ToggleGroup
             type="single"
-            value={String(window)}
-            onValueChange={(v) => v && setWindow(+v)}
+            value={String(span)}
+            onValueChange={(v) => v && setSpan(+v)}
+            aria-label="Strikes shown"
             className="rounded-full bg-secondary p-0.5"
           >
             {([10, 20, 0] as const).map((w) => (
@@ -120,6 +117,7 @@ export default function ChainPage() {
                   type="single"
                   value={scalpSide}
                   onValueChange={(v) => v && setScalpSide(v as OrderSide)}
+                  aria-label="One-tap side"
                   className="rounded-full bg-secondary p-0.5"
                 >
                   {(["BUY", "SELL"] as const).map((s) => (
@@ -130,7 +128,7 @@ export default function ChainPage() {
                         "rounded-full px-2 text-[11px] font-bold",
                         s === "BUY"
                           ? "data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
-                          : "data-[state=on]:bg-negative data-[state=on]:text-white"
+                          : "data-[state=on]:bg-negative data-[state=on]:text-on-negative"
                       )}
                     >
                       {s}
@@ -138,11 +136,21 @@ export default function ChainPage() {
                   ))}
                 </ToggleGroup>
                 <div className="flex items-center gap-2 rounded-full bg-secondary px-2 py-1">
-                  <button onClick={() => setScalpLots((l) => Math.max(1, l - 1))} className="font-bold leading-none">
+                  <button
+                    aria-label="One lot fewer"
+                    onClick={() => setScalpLots((l) => Math.max(1, l - 1))}
+                    className="rounded-full px-1 font-bold leading-none"
+                  >
                     −
                   </button>
-                  <span className="w-4 text-center font-mono text-xs font-bold">{scalpLots}</span>
-                  <button onClick={() => setScalpLots((l) => Math.min(100, l + 1))} className="font-bold leading-none">
+                  <span className="w-4 text-center font-mono text-xs font-bold" aria-live="polite">
+                    {scalpLots}
+                  </span>
+                  <button
+                    aria-label="One lot more"
+                    onClick={() => setScalpLots((l) => Math.min(100, l + 1))}
+                    className="rounded-full px-1 font-bold leading-none"
+                  >
                     +
                   </button>
                   <span className="text-[10px] font-semibold text-mute">lot</span>
@@ -310,6 +318,7 @@ function SideCells({
           tickBg(dir)
         )}
         title={scalp ? `One-tap trade ${kind}` : `Trade ${kind}`}
+        aria-label={`${scalp ? "One-tap trade" : "Trade"} ${kind} at ${px(q.ltp)}`}
       >
         <span className="tabular-nums">
           {scalp && <span className="mr-0.5 text-warning-content">⚡</span>}
@@ -338,15 +347,6 @@ function Ticket({ sel, onClose }: { sel: Sel; onClose: () => void }) {
   const [sl, setSl] = useState("");
   const [target, setTarget] = useState("");
   const [trail, setTrail] = useState("");
-  const panel = useRef<HTMLDivElement>(null);
-
-  useGSAP(() => {
-    gsap.fromTo(
-      panel.current,
-      { x: 420, opacity: 0.4 },
-      { x: 0, opacity: 1, duration: 0.4, ease: "power3.out" }
-    );
-  }, []);
 
   const lot = snap?.lot ?? 0;
   const label = `${snap?.id ?? "NIFTY"} ${sel.strike} ${sel.side}`;
@@ -370,301 +370,301 @@ function Ticket({ sel, onClose }: { sel: Sel; onClose: () => void }) {
   const risk = bracket && sl ? Math.abs(price - slNum) * qty : 0;
   const reward = bracket && target ? Math.abs(tgtNum - price) * qty : 0;
 
-  const close = () => {
-    gsap.to(panel.current, { x: 420, opacity: 0, duration: 0.25, ease: "power2.in", onComplete: onClose });
-  };
-
   return (
-    <>
-      <div className="fixed inset-0 z-40 bg-ink-dark/30" onClick={close} />
-      <div
-        ref={panel}
-        className="fixed right-0 top-0 z-50 flex h-full w-full max-w-sm flex-col gap-4 overflow-y-auto bg-card p-6 shadow-2xl"
+    <SidePanel
+      title={label}
+      onClose={onClose}
+      subtitle={
+        <>
+          LTP <Num value={q.ltp} format={px} flash className="font-mono font-semibold" />
+          <span className="mx-2 text-mute">·</span>
+          Bid <span className="font-mono">{px(q.bid || q.ltp)}</span>
+          <span className="mx-2 text-mute">·</span>
+          Ask <span className="font-mono">{px(q.ask || q.ltp)}</span>
+        </>
+      }
+    >
+      {/* buy/sell */}
+      <ToggleGroup
+        type="single"
+        value={side}
+        onValueChange={(v) => v && setSide(v as OrderSide)}
+        aria-label="Buy or sell"
+        className="grid grid-cols-2 gap-2"
       >
-        <div className="flex items-start justify-between">
-          <div>
-            <h2 className="text-xl font-black">{label}</h2>
-            <div className="text-sm text-body">
-              LTP{" "}
-              <Num value={q.ltp} format={px} flash className="font-mono font-semibold" />
-              <span className="mx-2 text-mute">·</span>
-              Bid <span className="font-mono">{px(q.bid || q.ltp)}</span>
-              <span className="mx-2 text-mute">·</span>
-              Ask <span className="font-mono">{px(q.ask || q.ltp)}</span>
-            </div>
-          </div>
-          <button onClick={close} className="rounded-full bg-secondary px-2.5 py-1 text-sm font-bold">
-            ✕
-          </button>
+        {(["BUY", "SELL"] as const).map((s) => (
+          <ToggleGroupItem
+            key={s}
+            value={s}
+            className={cn(
+              "h-11 rounded-3xl bg-secondary text-sm font-bold text-body",
+              s === "BUY"
+                ? "data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+                : "data-[state=on]:bg-negative data-[state=on]:text-on-negative"
+            )}
+          >
+            {s}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+
+      {/* market/limit */}
+      <ToggleGroup
+        type="single"
+        value={type}
+        onValueChange={(v) => v && setType(v as OrderType)}
+        aria-label="Order type"
+        className="flex gap-2"
+      >
+        {(["MARKET", "LIMIT"] as const).map((t) => (
+          <ToggleGroupItem
+            key={t}
+            value={t}
+            className="rounded-full bg-secondary px-3 text-xs font-semibold text-body data-[state=on]:bg-ink-dark data-[state=on]:text-primary"
+          >
+            {t}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+
+      {type === "LIMIT" && (
+        <Label className="flex flex-col items-start gap-1 text-sm font-semibold">
+          Limit price
+          <Input
+            type="number"
+            step="0.05"
+            value={limit}
+            onChange={(e) => setLimit(e.target.value)}
+            className="font-mono"
+          />
+        </Label>
+      )}
+
+      {/* lots */}
+      <div className="flex items-center justify-between rounded-3xl bg-secondary px-4 py-3">
+        <span className="text-sm font-semibold">Lots ({lot}/lot)</span>
+        <div className="flex items-center gap-3">
+          <Stepper label="One lot fewer" onClick={() => setLots((l) => Math.max(1, l - 1))}>−</Stepper>
+          <span className="w-8 text-center font-mono text-lg font-bold" aria-live="polite">
+            {lots}
+          </span>
+          <Stepper label="One lot more" onClick={() => setLots((l) => Math.min(100, l + 1))}>+</Stepper>
         </div>
+      </div>
 
-        {/* buy/sell */}
-        <ToggleGroup
-          type="single"
-          value={side}
-          onValueChange={(v) => v && setSide(v as OrderSide)}
-          className="grid grid-cols-2 gap-2"
-        >
-          {(["BUY", "SELL"] as const).map((s) => (
-            <ToggleGroupItem
-              key={s}
-              value={s}
-              className={cn(
-                "h-11 rounded-3xl bg-secondary text-sm font-bold text-body",
-                s === "BUY"
-                  ? "data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
-                  : "data-[state=on]:bg-negative data-[state=on]:text-white"
-              )}
-            >
-              {s}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-
-        {/* market/limit */}
-        <ToggleGroup
-          type="single"
-          value={type}
-          onValueChange={(v) => v && setType(v as OrderType)}
-          className="flex gap-2"
-        >
-          {(["MARKET", "LIMIT"] as const).map((t) => (
-            <ToggleGroupItem
-              key={t}
-              value={t}
-              className="rounded-full bg-secondary px-3 text-xs font-semibold text-body data-[state=on]:bg-ink-dark data-[state=on]:text-primary"
-            >
-              {t}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-
-        {type === "LIMIT" && (
-          <Label className="flex flex-col items-start gap-1 text-sm font-semibold">
-            Limit price
-            <Input
-              type="number"
-              step="0.05"
-              value={limit}
-              onChange={(e) => setLimit(e.target.value)}
-              className="font-mono"
-            />
-          </Label>
-        )}
-
-        {/* lots */}
-        <div className="flex items-center justify-between rounded-3xl bg-secondary px-4 py-3">
-          <span className="text-sm font-semibold">Lots ({lot}/lot)</span>
-          <div className="flex items-center gap-3">
-            <Stepper onClick={() => setLots((l) => Math.max(1, l - 1))}>−</Stepper>
-            <span className="w-8 text-center font-mono text-lg font-bold">{lots}</span>
-            <Stepper onClick={() => setLots((l) => Math.min(100, l + 1))}>+</Stepper>
-          </div>
-        </div>
-
-        {/* SL / target */}
-        <div className="rounded-3xl bg-secondary p-4">
-          <Label className="flex cursor-pointer items-center justify-between">
-            <span className="text-sm font-semibold">Stop-loss &amp; target</span>
-            <Switch checked={bracket} onCheckedChange={setBracket} />
-          </Label>
-          {bracket && (
-            <div className="mt-3 flex flex-col gap-2">
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <span className="text-xs font-semibold text-mute">
-                    Stop-loss {long ? "≤" : "≥"}
-                  </span>
-                  <Input
-                    type="number"
-                    step="0.05"
-                    value={sl}
-                    onChange={(e) => setSl(e.target.value)}
-                    placeholder={(long ? price * 0.8 : price * 1.2).toFixed(2)}
-                    className={cn("mt-0.5 font-mono", !slValid && "border-negative")}
-                  />
-                </div>
-                <div>
-                  <span className="text-xs font-semibold text-mute">
-                    Target {long ? "≥" : "≤"}
-                  </span>
-                  <Input
-                    type="number"
-                    step="0.05"
-                    value={target}
-                    onChange={(e) => setTarget(e.target.value)}
-                    placeholder={(long ? price * 1.3 : price * 0.7).toFixed(2)}
-                    className={cn("mt-0.5 font-mono", !tgtValid && "border-negative")}
-                  />
-                </div>
-              </div>
-              {/* quick % presets off the fill price */}
-              <div className="flex flex-wrap gap-1.5">
-                {[10, 20, 30].map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => {
-                      setSl((price * (long ? 1 - p / 100 : 1 + p / 100)).toFixed(2));
-                      setTarget((price * (long ? 1 + p / 100 : 1 - p / 100)).toFixed(2));
-                    }}
-                    className="rounded-full bg-card px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-border hover:bg-accent"
-                  >
-                    ±{p}%
-                  </button>
-                ))}
-                {(sl || target || trail) && (
-                  <button
-                    onClick={() => {
-                      setSl("");
-                      setTarget("");
-                      setTrail("");
-                    }}
-                    className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold text-mute hover:text-body"
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
-              {/* trailing stop: distance in premium points; SL follows price */}
+      {/* SL / target */}
+      <div className="rounded-3xl bg-secondary p-4">
+        <Label className="flex cursor-pointer items-center justify-between">
+          <span className="text-sm font-semibold">Stop-loss &amp; target</span>
+          <Switch checked={bracket} onCheckedChange={setBracket} />
+        </Label>
+        {bracket && (
+          <div className="mt-3 flex flex-col gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <div>
                 <span className="text-xs font-semibold text-mute">
-                  Trail by (pts, optional)
+                  Stop-loss {long ? "≤" : "≥"}
                 </span>
                 <Input
                   type="number"
                   step="0.05"
-                  value={trail}
-                  onChange={(e) => setTrail(e.target.value)}
-                  placeholder={(price * 0.15).toFixed(2)}
-                  className="mt-0.5 font-mono"
+                  value={sl}
+                  onChange={(e) => setSl(e.target.value)}
+                  placeholder={(long ? price * 0.8 : price * 1.2).toFixed(2)}
+                  className={cn("mt-0.5 font-mono", !slValid && "border-negative")}
                 />
-                {+trail > 0 && (
-                  <p className="mt-1 text-[11px] text-mute">
-                    Stop trails {px(+trail)} behind the {long ? "high" : "low"} — locks profit as it moves your way.
-                  </p>
-                )}
               </div>
-              {(risk > 0 || reward > 0) && (
-                <div className="flex justify-between text-xs">
-                  <span className="text-negative-deep">Risk {inr(risk)}</span>
-                  {risk > 0 && reward > 0 && (
-                    <span className="font-semibold">
-                      1 : {(reward / risk).toFixed(2)}
-                    </span>
-                  )}
-                  <span className="text-positive-deep">Reward {inr(reward)}</span>
-                </div>
-              )}
-              {(!slValid || !tgtValid) && (
-                <p className="text-xs font-semibold text-negative">
-                  {!slValid && `Stop-loss must be ${long ? "below" : "above"} ${px(price)}. `}
-                  {!tgtValid && `Target must be ${long ? "above" : "below"} ${px(price)}.`}
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* cost + charges */}
-        <div className="rounded-3xl bg-accent p-4 text-sm">
-          <Row k="Quantity" v={`${qty}`} />
-          <Row k={side === "BUY" ? "Premium payable" : "Premium receivable"} v={inr(price * qty)} />
-          <button
-            onClick={() => setShowCharges((v) => !v)}
-            className="mt-1 flex w-full items-center justify-between border-t border-foreground/10 pt-1.5 text-left"
-          >
-            <span className="text-body underline decoration-dotted underline-offset-2">
-              Charges &amp; taxes {showCharges ? "▴" : "▾"}
-            </span>
-            <span className="font-mono font-semibold">{inr(cost.total)}</span>
-          </button>
-          {showCharges && (
-            <div className="mt-1 flex flex-col gap-0.5 text-xs text-body">
-              <Row k="Brokerage" v={inr(cost.brokerage)} />
-              <Row k="STT (sell side)" v={inr(cost.stt)} />
-              <Row k="Exchange txn" v={inr(cost.exchange)} />
-              <Row k="SEBI + IPFT" v={inr(cost.sebi + cost.ipft)} />
-              <Row k="GST @ 18%" v={inr(cost.gst)} />
-              <Row k="Stamp duty (buy side)" v={inr(cost.stampDuty)} />
-            </div>
-          )}
-          <div className="mt-1.5 border-t border-foreground/10 pt-1.5">
-            <Row
-              k={side === "BUY" ? "Net debit" : "Net credit"}
-              v={inr(side === "BUY" ? price * qty + cost.total : price * qty - cost.total)}
-            />
-            <Row k="Breakeven move" v={`${breakeven.toFixed(2)} pts`} />
-          </div>
-
-          {margin && (
-            <div className="mt-1.5 border-t border-foreground/10 pt-1.5">
-              <div className="flex justify-between py-0.5 font-semibold">
-                <span>Margin required</span>
-                <span className={cn("font-mono", shortfall > 0 && "text-negative")}>
-                  {inr(margin.total)}
+              <div>
+                <span className="text-xs font-semibold text-mute">
+                  Target {long ? "≥" : "≤"}
                 </span>
+                <Input
+                  type="number"
+                  step="0.05"
+                  value={target}
+                  onChange={(e) => setTarget(e.target.value)}
+                  placeholder={(long ? price * 1.3 : price * 0.7).toFixed(2)}
+                  className={cn("mt-0.5 font-mono", !tgtValid && "border-negative")}
+                />
               </div>
-              <div className="flex flex-col gap-0.5 text-xs text-body">
-                <Row k="SPAN" v={inr(margin.span)} />
-                <Row k="Exposure" v={inr(margin.exposure)} />
-                <Row k="Contract notional" v={inr(margin.notional)} />
-                <Row k="Available" v={inr(paper.availableMargin)} />
-              </div>
-              {shortfall > 0 && (
-                <p className="mt-1 text-xs font-semibold text-negative">
-                  Short by {inr(shortfall)} — reduce lots or square off another leg.
+            </div>
+            {/* quick % presets off the fill price */}
+            <div className="flex flex-wrap gap-1.5">
+              {[10, 20, 30].map((p) => (
+                <button
+                  key={p}
+                  onClick={() => {
+                    setSl((price * (long ? 1 - p / 100 : 1 + p / 100)).toFixed(2));
+                    setTarget((price * (long ? 1 + p / 100 : 1 - p / 100)).toFixed(2));
+                  }}
+                  className="rounded-full bg-card px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-border hover:bg-accent"
+                >
+                  ±{p}%
+                </button>
+              ))}
+              {(sl || target || trail) && (
+                <button
+                  onClick={() => {
+                    setSl("");
+                    setTarget("");
+                    setTrail("");
+                  }}
+                  className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold text-mute hover:text-body"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            {/* trailing stop: distance in premium points; SL follows price */}
+            <div>
+              <span className="text-xs font-semibold text-mute">
+                Trail by (pts, optional)
+              </span>
+              <Input
+                type="number"
+                step="0.05"
+                value={trail}
+                onChange={(e) => setTrail(e.target.value)}
+                placeholder={(price * 0.15).toFixed(2)}
+                className="mt-0.5 font-mono"
+              />
+              {+trail > 0 && (
+                <p className="mt-1 text-[11px] text-mute">
+                  Stop trails {px(+trail)} behind the {long ? "high" : "low"} — locks profit as it moves your way.
                 </p>
               )}
             </div>
-          )}
+            {(risk > 0 || reward > 0) && (
+              <div className="flex justify-between text-xs">
+                <span className="text-negative-deep">Risk {inr(risk)}</span>
+                {risk > 0 && reward > 0 && (
+                  <span className="font-semibold">
+                    1 : {(reward / risk).toFixed(2)}
+                  </span>
+                )}
+                <span className="text-positive-deep">Reward {inr(reward)}</span>
+              </div>
+            )}
+            {(!slValid || !tgtValid) && (
+              <p className="text-xs font-semibold text-loss">
+                {!slValid && `Stop-loss must be ${long ? "below" : "above"} ${px(price)}. `}
+                {!tgtValid && `Target must be ${long ? "above" : "below"} ${px(price)}.`}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* cost + charges */}
+      <div className="rounded-3xl bg-accent p-4 text-sm">
+        <Row k="Quantity" v={`${qty}`} />
+        <Row k={side === "BUY" ? "Premium payable" : "Premium receivable"} v={inr(price * qty)} />
+        <button
+          onClick={() => setShowCharges((v) => !v)}
+          aria-expanded={showCharges}
+          className="mt-1 flex w-full items-center justify-between border-t border-foreground/10 pt-1.5 text-left"
+        >
+          <span className="text-body underline decoration-dotted underline-offset-2">
+            Charges &amp; taxes {showCharges ? "▴" : "▾"}
+          </span>
+          <span className="font-mono font-semibold">{inr(cost.total)}</span>
+        </button>
+        {showCharges && (
+          <div className="mt-1 flex flex-col gap-0.5 text-xs text-body">
+            <Row k="Brokerage" v={inr(cost.brokerage)} />
+            <Row k="STT (sell side)" v={inr(cost.stt)} />
+            <Row k="Exchange txn" v={inr(cost.exchange)} />
+            <Row k="SEBI + IPFT" v={inr(cost.sebi + cost.ipft)} />
+            <Row k="GST @ 18%" v={inr(cost.gst)} />
+            <Row k="Stamp duty (buy side)" v={inr(cost.stampDuty)} />
+          </div>
+        )}
+        <div className="mt-1.5 border-t border-foreground/10 pt-1.5">
+          <Row
+            k={side === "BUY" ? "Net debit" : "Net credit"}
+            v={inr(side === "BUY" ? price * qty + cost.total : price * qty - cost.total)}
+          />
+          <Row k="Breakeven move" v={`${breakeven.toFixed(2)} pts`} />
         </div>
 
-        <Button
-          onClick={() => {
-            paper.placeOrder({
-              instrumentKey: sel.q.instrumentKey,
-              label,
-              side,
-              type,
-              lots,
-              limitPrice: type === "LIMIT" ? +limit : undefined,
-              stopLoss: bracket && slNum > 0 ? slNum : undefined,
-              target: bracket && tgtNum > 0 ? tgtNum : undefined,
-              trail: bracket && +trail > 0 ? +trail : undefined,
-            });
-            close();
-          }}
-          disabled={
-            !open ||
-            (type === "LIMIT" && !(+limit > 0)) ||
-            !slValid ||
-            !tgtValid ||
-            shortfall > 0
-          }
-          className={cn(
-            "mt-auto h-12 shrink-0 rounded-3xl text-base font-bold",
-            side === "SELL" && "bg-negative text-white hover:bg-negative/85"
-          )}
-        >
-          {!open
-            ? `${marketStatus().label} — trading shut`
-            : shortfall > 0
-              ? "Insufficient margin"
-              : `${side} ${lots} lot${lots > 1 ? "s" : ""} · ${inr(price * qty)}`}
-        </Button>
-        <p className="text-center text-[11px] text-mute">
-          {open
-            ? "Paper order — fills instantly at market price, no real money."
-            : "Orders accepted 09:15–15:30 IST, Mon–Fri."}
-        </p>
+        {margin && (
+          <div className="mt-1.5 border-t border-foreground/10 pt-1.5">
+            <div className="flex justify-between py-0.5 font-semibold">
+              <span>Margin required</span>
+              <span className={cn("font-mono", shortfall > 0 && "text-loss")}>
+                {inr(margin.total)}
+              </span>
+            </div>
+            <div className="flex flex-col gap-0.5 text-xs text-body">
+              <Row k="SPAN" v={inr(margin.span)} />
+              <Row k="Exposure" v={inr(margin.exposure)} />
+              <Row k="Contract notional" v={inr(margin.notional)} />
+              <Row k="Available" v={inr(paper.availableMargin)} />
+            </div>
+            {shortfall > 0 && (
+              <p className="mt-1 text-xs font-semibold text-loss">
+                Short by {inr(shortfall)} — reduce lots or square off another leg.
+              </p>
+            )}
+          </div>
+        )}
       </div>
-    </>
+
+      <PanelButton
+        onClick={() => {
+          paper.placeOrder({
+            instrumentKey: sel.q.instrumentKey,
+            label,
+            side,
+            type,
+            lots,
+            limitPrice: type === "LIMIT" ? +limit : undefined,
+            stopLoss: bracket && slNum > 0 ? slNum : undefined,
+            target: bracket && tgtNum > 0 ? tgtNum : undefined,
+            trail: bracket && +trail > 0 ? +trail : undefined,
+          });
+        }}
+        disabled={
+          !open ||
+          (type === "LIMIT" && !(+limit > 0)) ||
+          !slValid ||
+          !tgtValid ||
+          shortfall > 0
+        }
+        className={cn(
+          "mt-auto h-12 shrink-0 rounded-3xl text-base font-bold",
+          side === "SELL" && "bg-negative text-on-negative hover:bg-negative/85"
+        )}
+      >
+        {!open
+          ? `${marketStatus().label} — trading shut`
+          : shortfall > 0
+            ? "Insufficient margin"
+            : `${side} ${lots} lot${lots > 1 ? "s" : ""} · ${inr(price * qty)}`}
+      </PanelButton>
+      <p className="text-center text-[11px] text-mute">
+        {open
+          ? type === "MARKET"
+            ? "Paper order — fills at the live bid/ask, no real money."
+            : "Paper order — fills when the price reaches your limit, no real money."
+          : "Orders accepted 09:15–15:30 IST, Mon–Fri."}
+      </p>
+    </SidePanel>
   );
 }
 
-const Stepper = ({ onClick, children }: { onClick: () => void; children: React.ReactNode }) => (
+const Stepper = ({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) => (
   <button
     onClick={onClick}
+    aria-label={label}
     className="h-8 w-8 rounded-full bg-card font-bold ring-1 ring-border transition-transform active:scale-90"
   >
     {children}

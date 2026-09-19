@@ -33,4 +33,4 @@ export function compact(v: number): string {
 }
 
 export const plClass = (v: number) =>
-  v > 0 ? "text-positive" : v < 0 ? "text-negative" : "text-mute";
+  v > 0 ? "text-gain" : v < 0 ? "text-loss" : "text-mute";

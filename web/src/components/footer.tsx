@@ -2,8 +2,8 @@
 import Link from "next/link";
 import { Wifi, WifiOff } from "lucide-react";
 import { GithubMark } from "@/components/github-mark";
-import { useFeedStatus } from "@/lib/market";
-import { marketStatus } from "@/lib/hours";
+import type { FeedStatus } from "@/lib/market";
+import { useMarketStatus } from "@/lib/use-market-status";
 import { SITE } from "@/lib/site";
 import { cn } from "@/lib/utils";
 
@@ -36,9 +36,9 @@ const LINKS: { heading: string; items: { label: string; href: string }[] }[] = [
   },
 ];
 
-export function Footer() {
-  const feed = useFeedStatus();
-  const { open, label } = marketStatus();
+/** `feed` is passed inside the app only — the landing page has no feed to report on. */
+export function Footer({ feed }: { feed?: FeedStatus }) {
+  const session = useMarketStatus();
 
   return (
     // no outer margin here — the parent decides the gap, so the footer can sit
@@ -79,42 +79,46 @@ export function Footer() {
               </div>
             </a>
 
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold",
-                  feed === "live"
-                    ? "bg-primary/15 text-primary"
-                    : "bg-warning/20 text-warning"
-                )}
-              >
-                {feed === "live" ? (
-                  <Wifi className="h-3 w-3" />
-                ) : (
-                  <WifiOff className="h-3 w-3" />
-                )}
-                {feed === "live"
-                  ? "Live feed"
-                  : feed === "connecting"
-                    ? "Connecting…"
-                    : "No market data"}
-              </span>
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold",
-                  open
-                    ? "bg-positive/20 text-positive"
-                    : "bg-canvas-soft/10 text-canvas-soft/60"
-                )}
-              >
+            <div className="mt-4 flex min-h-6 flex-wrap items-center gap-2">
+              {feed && (
                 <span
                   className={cn(
-                    "h-1.5 w-1.5 rounded-full",
-                    open ? "bg-positive" : "bg-canvas-soft/40"
+                    "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold",
+                    feed === "live"
+                      ? "bg-primary/15 text-primary"
+                      : "bg-warning/20 text-warning"
                   )}
-                />
-                {label}
-              </span>
+                >
+                  {feed === "live" ? (
+                    <Wifi className="h-3 w-3" />
+                  ) : (
+                    <WifiOff className="h-3 w-3" />
+                  )}
+                  {feed === "live"
+                    ? "Live feed"
+                    : feed === "connecting"
+                      ? "Connecting…"
+                      : "No market data"}
+                </span>
+              )}
+              {session && (
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold",
+                    session.open
+                      ? "bg-positive/20 text-positive"
+                      : "bg-canvas-soft/10 text-canvas-soft/60"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "h-1.5 w-1.5 rounded-full",
+                      session.open ? "bg-positive" : "bg-canvas-soft/40"
+                    )}
+                  />
+                  {session.label}
+                </span>
+              )}
             </div>
           </div>
 
@@ -172,7 +176,8 @@ export function Footer() {
         </div>
 
         <div className="mt-6 flex flex-col items-center justify-between gap-3 border-t border-canvas-soft/10 pt-6 sm:flex-row">
-          <span className="text-xs text-canvas-soft/50">
+          {/* the year is baked in at build time; the client may be in a later one */}
+          <span className="text-xs text-canvas-soft/50" suppressHydrationWarning>
             © {new Date().getFullYear()} {SITE.name} · Open source under {SITE.license}
           </span>
           <div className="flex items-center gap-4 text-xs text-canvas-soft/50">

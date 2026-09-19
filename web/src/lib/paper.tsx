@@ -1,6 +1,6 @@
 "use client";
-// Paper trading engine: accounts, orders, positions, P&L. Persisted per-profile
-// in localStorage (PRD wants 2-5 local users — profiles, not real auth).
+// Paper trading engine: accounts, orders, positions, P&L. Persisted per profile
+// in the data service's SQLite, with localStorage as an offline cache.
 import {
   createContext,
   useCallback,
@@ -16,6 +16,10 @@ import { orderCharges } from "./charges";
 import { sellMargin } from "./margin";
 import { marketOpen, marketStatus } from "./hours";
 import { inr } from "./format";
+import { markToMarket, unrealizedPnl } from "./equity";
+import { DATA_URL } from "./site";
+import { readJSON, readLS, writeLS } from "./storage";
+import { LoadingAccount, Onboard } from "@/components/profile-form";
 
 interface PaperState {
   account: Account;
@@ -75,13 +79,36 @@ const freshState = (name: string, bal: number): PaperState => ({
 function normalize(s: PaperState): PaperState {
   return {
     ...s,
-    positions: s.positions.map((p) => ({ ...p, charges: p.charges ?? 0, margin: p.margin ?? 0 })),
-    trades: s.trades.map((t) => ({ ...t, charges: t.charges ?? 0 })),
+    account: { ...s.account, equityHistory: s.account.equityHistory ?? [] },
+    positions: (s.positions ?? []).map((p) => ({ ...p, charges: p.charges ?? 0, margin: p.margin ?? 0 })),
+    orders: s.orders ?? [],
+    trades: (s.trades ?? []).map((t) => ({ ...t, charges: t.charges ?? 0 })),
   };
 }
 
-function hydrate(raw: string | null, name: string): PaperState {
-  return raw ? normalize(JSON.parse(raw)) : freshState(name, 1000000);
+/** Enough of the shape to trust a saved account instead of crashing on it.
+ *  Missing lists are fine (normalize fills them in); a missing account isn't. */
+function isState(v: unknown): v is PaperState {
+  const s = v as Partial<PaperState> | null;
+  const list = (x: unknown) => x === undefined || Array.isArray(x);
+  return (
+    !!s &&
+    typeof s === "object" &&
+    !!s.account &&
+    typeof s.account.balance === "number" &&
+    typeof s.account.startingBalance === "number" &&
+    list(s.positions) &&
+    list(s.orders) &&
+    list(s.trades)
+  );
+}
+
+const isNames = (v: unknown): v is string[] =>
+  Array.isArray(v) && v.every((x) => typeof x === "string");
+
+function cached(name: string): PaperState {
+  const s = readJSON<PaperState | null>(lsKey(name), null, (v): v is PaperState => isState(v));
+  return s ? normalize(s) : freshState(name, 1000000);
 }
 
 const LS_PROFILES = "pt.profiles";
@@ -91,12 +118,11 @@ const lsKey = (p: string) => `pt.state.${p}`;
 // SQLite on the data server is the durable store; localStorage is an offline
 // cache so the app still works when the server is down. Reads prefer the server,
 // writes go to both (localStorage now, server debounced).
-const DATA_URL = process.env.NEXT_PUBLIC_DATA_URL ?? "http://localhost:8000";
-
 async function fetchMeta(): Promise<{ profiles: string[]; active: string } | null> {
   try {
     const r = await fetch(`${DATA_URL}/paper`, { signal: AbortSignal.timeout(4000) });
-    return r.ok ? await r.json() : null;
+    const m = r.ok ? await r.json() : null;
+    return m && isNames(m.profiles) && typeof m.active === "string" ? m : null;
   } catch {
     return null;
   }
@@ -107,7 +133,8 @@ async function fetchState(profile: string): Promise<PaperState | null> {
     const r = await fetch(`${DATA_URL}/paper/${encodeURIComponent(profile)}`, {
       signal: AbortSignal.timeout(4000),
     });
-    return r.ok ? await r.json() : null;
+    const s = r.ok ? await r.json() : null;
+    return isState(s) ? s : null;
   } catch {
     return null;
   }
@@ -136,6 +163,7 @@ export function PaperProvider({ children }: { children: React.ReactNode }) {
   const [profiles, setProfiles] = useState<string[]>([]);
   const [activeProfile, setActiveProfile] = useState("");
   const [state, setState] = useState<PaperState | null>(null);
+  const [loaded, setLoaded] = useState(false);
 
   // load once — prefer the server, fall back to localStorage when it's down
   useEffect(() => {
@@ -144,25 +172,28 @@ export function PaperProvider({ children }: { children: React.ReactNode }) {
       const meta = await fetchMeta();
       if (dead) return;
       if (meta?.profiles.length) {
-        const active = meta.active || meta.profiles[0];
+        const active = meta.profiles.includes(meta.active) ? meta.active : meta.profiles[0];
         setProfiles(meta.profiles);
         setActiveProfile(active);
         const rs = await fetchState(active);
         if (dead) return;
         if (rs) {
-          localStorage.setItem(lsKey(active), JSON.stringify(rs));
+          writeLS(lsKey(active), JSON.stringify(rs));
           setState(normalize(rs));
         } else {
-          setState(hydrate(localStorage.getItem(lsKey(active)), active));
+          setState(cached(active));
         }
+        setLoaded(true);
         return;
       }
       // no server (or nothing saved there yet) → localStorage
-      const ps: string[] = JSON.parse(localStorage.getItem(LS_PROFILES) ?? "[]");
-      const active = localStorage.getItem(LS_ACTIVE) ?? ps[0] ?? "";
+      const ps = readJSON<string[]>(LS_PROFILES, [], isNames);
+      const saved = readLS(LS_ACTIVE);
+      const active = saved && ps.includes(saved) ? saved : ps[0] ?? "";
       setProfiles(ps);
       setActiveProfile(active);
-      if (active) setState(hydrate(localStorage.getItem(lsKey(active)), active));
+      if (active) setState(cached(active));
+      setLoaded(true);
     })();
     return () => {
       dead = true;
@@ -172,8 +203,8 @@ export function PaperProvider({ children }: { children: React.ReactNode }) {
   // persist the profile roster whenever it changes
   useEffect(() => {
     if (!activeProfile) return;
-    localStorage.setItem(LS_PROFILES, JSON.stringify(profiles));
-    localStorage.setItem(LS_ACTIVE, activeProfile);
+    writeLS(LS_PROFILES, JSON.stringify(profiles));
+    writeLS(LS_ACTIVE, activeProfile);
     putMeta(profiles, activeProfile);
   }, [profiles, activeProfile]);
 
@@ -181,28 +212,33 @@ export function PaperProvider({ children }: { children: React.ReactNode }) {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
     if (!state || !activeProfile) return;
-    localStorage.setItem(lsKey(activeProfile), JSON.stringify(state));
+    writeLS(lsKey(activeProfile), JSON.stringify(state));
     clearTimeout(saveTimer.current);
     const s = state;
     const p = activeProfile;
     saveTimer.current = setTimeout(() => putState(p, s), 800);
   }, [state, activeProfile]);
 
-  const createProfile = useCallback((name: string, startingBalance: number) => {
-    setProfiles((ps) => (ps.includes(name) ? ps : [...ps, name]));
-    setActiveProfile(name);
-    const fresh = freshState(name, startingBalance);
-    setState(fresh);
-    putState(name, fresh); // seed the server row immediately
-  }, []);
-
   const switchProfile = useCallback((name: string) => {
     setActiveProfile(name);
     (async () => {
       const rs = await fetchState(name);
-      setState(rs ? normalize(rs) : hydrate(localStorage.getItem(lsKey(name)), name));
+      setState(rs ? normalize(rs) : cached(name));
     })();
   }, []);
+
+  const createProfile = useCallback(
+    (name: string, startingBalance: number) => {
+      // an existing name would be overwritten with a blank account — open it instead
+      if (profiles.includes(name)) return switchProfile(name);
+      setProfiles((ps) => [...ps, name]);
+      setActiveProfile(name);
+      const fresh = freshState(name, startingBalance);
+      setState(fresh);
+      putState(name, fresh); // seed the server row immediately
+    },
+    [profiles, switchProfile]
+  );
 
   const resetAccount = useCallback(() => {
     setState((s) =>
@@ -277,6 +313,9 @@ export function PaperProvider({ children }: { children: React.ReactNode }) {
       }
       // premium cash flow alone nets out to realized P&L across open+close — don't add realized again
       const balance = s.account.balance - signedQty * price - cost;
+      // cash plus open positions at their last price, not cash alone — otherwise
+      // every buy would chart as a loss of the whole premium
+      const equity = markToMarket(balance, positions, (k) => findQuote(latestMarkets.current, k)?.ltp);
       const trade: Trade = {
         id: o.id + "-t",
         ts: Date.now(),
@@ -290,7 +329,7 @@ export function PaperProvider({ children }: { children: React.ReactNode }) {
       };
       const equityHistory = [
         ...s.account.equityHistory,
-        { ts: Date.now(), equity: balance },
+        { ts: Date.now(), equity },
       ].slice(-500);
       return {
         ...s,
@@ -405,6 +444,9 @@ export function PaperProvider({ children }: { children: React.ReactNode }) {
   // limit-order matching on every tick
   useEffect(() => {
     if (!snap) return;
+    // Tick-driven sync with the live feed, like a broker's matching engine: a
+    // fill can only be detected when a new quote arrives.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setState((s) => {
       if (!s || !s.orders.some((o) => o.status === "PENDING")) return s;
       let next = s;
@@ -431,6 +473,8 @@ export function PaperProvider({ children }: { children: React.ReactNode }) {
   // only), then the same hit-check fires the exit.
   useEffect(() => {
     if (!snap) return;
+    // same tick-driven sync as the limit matching above
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setState((s) => {
       if (!s || !s.positions.some((p) => p.stopLoss || p.target || p.trail)) return s;
       let trailed = false;
@@ -605,12 +649,10 @@ export function PaperProvider({ children }: { children: React.ReactNode }) {
   }, [applyFill]);
 
   // derived
-  const unrealized = (state?.positions ?? []).reduce((sum, p) => {
-    const q = findQuote(snap, p.instrumentKey);
-    return sum + (q ? (q.ltp - p.avgPrice) * p.qty : 0);
-  }, 0);
+  const ltpOf = (k: string) => findQuote(snap, k)?.ltp;
+  const unrealized = unrealizedPnl(state?.positions ?? [], ltpOf);
   const usedMargin = (state?.positions ?? []).reduce((sum, p) => sum + p.margin, 0);
-  const equity = (state?.account.balance ?? 0) + unrealized;
+  const equity = markToMarket(state?.account.balance ?? 0, state?.positions ?? [], ltpOf);
   // margin is blocked, not spent — it comes off what you can open next
   const availableMargin = Math.max(0, (state?.account.balance ?? 0) - usedMargin);
 
@@ -636,7 +678,7 @@ export function PaperProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <PaperCtx.Provider value={api}>
-      {api ? children : <Onboard createProfile={createProfile} />}
+      {api ? children : loaded ? <Onboard onCreate={createProfile} /> : <LoadingAccount />}
     </PaperCtx.Provider>
   );
 }
@@ -645,61 +687,4 @@ export function usePaper() {
   const ctx = useContext(PaperCtx);
   if (!ctx) throw new Error("usePaper outside PaperProvider");
   return ctx;
-}
-
-// Minimal onboarding: pick name + dummy capital. Lives here to keep the guard simple.
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
-
-function Onboard({
-  createProfile,
-}: {
-  createProfile: (n: string, b: number) => void;
-}) {
-  const [name, setName] = useState("");
-  const [amount, setAmount] = useState("1000000");
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-sm rounded-3xl">
-        <CardContent className="flex flex-col gap-4 p-6">
-          <div>
-            <h1 className="text-2xl font-black">Create your account</h1>
-            <p className="text-sm text-body">
-              Pick a name and virtual capital. No real money, ever.
-            </p>
-          </div>
-          <Input
-            placeholder="Your name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <Input
-            type="number"
-            placeholder="Virtual capital (₹)"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-          />
-          <div className="flex gap-2">
-            {[500000, 1000000, 5000000].map((v) => (
-              <button
-                key={v}
-                onClick={() => setAmount(String(v))}
-                className="rounded-full bg-secondary px-3 py-1 text-xs font-semibold hover:bg-accent"
-              >
-                {inr(v)}
-              </button>
-            ))}
-          </div>
-          <Button
-            className="h-11 rounded-3xl text-base font-semibold"
-            disabled={!name.trim() || +amount <= 0}
-            onClick={() => createProfile(name.trim(), +amount)}
-          >
-            Start paper trading
-          </Button>
-        </CardContent>
-      </Card>
-    </div>
-  );
 }

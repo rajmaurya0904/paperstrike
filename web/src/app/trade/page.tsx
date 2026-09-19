@@ -13,6 +13,7 @@ import { Num } from "@/components/num";
 import { Reveal } from "@/components/reveal";
 import { useFeedStatus, useMarket } from "@/lib/market";
 import { usePaper } from "@/lib/paper";
+import { reducedMotion } from "@/lib/motion";
 import { inr, plClass, px, signed } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +25,7 @@ export default function Dashboard() {
 
   useGSAP(
     () => {
+      if (reducedMotion()) return;
       gsap.from("[data-anim]", {
         y: 24,
         opacity: 0,

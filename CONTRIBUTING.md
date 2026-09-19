@@ -32,8 +32,12 @@ Thanks for helping. Issues and pull requests are welcome.
 See the README's "Manual setup". Before opening a PR:
 
 ```bash
-cd web && npx tsc --noEmit && npm run check && npm run build
+cd web && npx tsc --noEmit && npm run lint && npm run check && npm run build
 cd data && python -m pytest tests
 ```
+
+Set `API_DOCS=1` when starting the data service to get FastAPI's interactive
+docs at <http://localhost:8000/docs>. They're off by default because they load
+scripts from a CDN.
 
 By contributing, you agree that your contributions are licensed under AGPL-3.0.

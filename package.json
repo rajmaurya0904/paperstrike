@@ -10,7 +10,7 @@
   "author": "Raj Maurya (https://github.com/rajmaurya0904)",
   "type": "module",
   "bin": { "paperstrike": "bin/paperstrike.mjs" },
-  "engines": { "node": ">=20" },
+  "engines": { "node": ">=20.9" },
   "files": [
     "bin/",
     "data/",

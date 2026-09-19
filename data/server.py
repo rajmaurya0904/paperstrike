@@ -8,6 +8,7 @@ answers the web app's origin and local hostnames, and never echoes a secret back
 import asyncio
 import json
 import os
+import re
 import sqlite3
 import time
 from urllib.parse import urlencode
@@ -20,35 +21,86 @@ from pydantic import BaseModel
 import config
 import providers
 from providers.base import INDICES, INTERVALS, NotConnected
+from providers.upstox import LoginError
 from relay import relay
 
 WEB_ORIGINS = [o.strip().rstrip("/") for o in
                os.environ.get("WEB_ORIGIN", "http://localhost:3000,http://127.0.0.1:3000").split(",") if o.strip()]
 ALLOWED_HOSTS = {h.strip() for h in os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1,api").split(",")}
+MAX_BODY = 16 * 1024 * 1024  # a paper account with years of trades is still well under this
 
-app = FastAPI(title="Paperstrike data service")
+SECURITY_HEADERS = [
+    (b"x-content-type-options", b"nosniff"),
+    (b"referrer-policy", b"no-referrer"),
+    (b"cache-control", b"no-store"),
+]
+
+# interactive API docs load their scripts from a CDN, so they're opt-in
+DOCS = os.environ.get("API_DOCS") == "1"
+app = FastAPI(title="Paperstrike data service", docs_url="/docs" if DOCS else None,
+              redoc_url=None, openapi_url="/openapi.json" if DOCS else None)
+
+
+class LocalOnly:
+    """Guards every HTTP request and websocket, not just the HTTP routes.
+
+    - Host allowlist: blocks DNS rebinding (a page on evil.com resolving to 127.0.0.1).
+    - Origin allowlist on websockets and on anything that changes state, plus a
+      JSON content type on writes, so another website can't quietly POST here
+      from the user's browser.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        kind = scope["type"]
+        if kind not in ("http", "websocket"):
+            return await self.app(scope, receive, send)
+        headers = {k.decode("latin-1"): v.decode("latin-1") for k, v in scope["headers"]}
+
+        problem = None
+        host = headers.get("host", "").rsplit(":", 1)[0].strip("[]")
+        origin = headers.get("origin", "").rstrip("/")
+        if host not in ALLOWED_HOSTS:
+            problem = (403, "Host not allowed")
+        elif kind == "websocket":
+            if origin and origin not in WEB_ORIGINS:
+                problem = (403, "Origin not allowed")
+        elif scope["method"] in ("POST", "PUT", "PATCH", "DELETE"):
+            if origin and origin not in WEB_ORIGINS:
+                problem = (403, "Origin not allowed")
+            elif not headers.get("content-type", "").startswith("application/json"):
+                problem = (415, "Expected JSON")
+            elif not headers.get("content-length", "").isdigit():
+                problem = (411, "Content-Length required")
+            elif int(headers["content-length"]) > MAX_BODY:
+                problem = (413, "Request too large")
+
+        if problem and kind == "websocket":
+            return await send({"type": "websocket.close", "code": 1008})  # refused before accept
+        if problem:
+            status, detail = problem
+            return await JSONResponse({"detail": detail}, status_code=status,
+                                      headers={k.decode(): v.decode() for k, v in SECURITY_HEADERS})(
+                scope, receive, send)
+
+        async def send_with_headers(message):
+            if message["type"] == "http.response.start":
+                message["headers"] = list(message.get("headers", [])) + SECURITY_HEADERS
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers if kind == "http" else send)
+
+
+# added first so CORS wraps it: an allowed origin can still read a 413 or 415
+app.add_middleware(LocalOnly)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=WEB_ORIGINS,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_methods=["GET", "POST", "PUT"],
     allow_headers=["Content-Type"],
 )
-
-
-@app.middleware("http")
-async def local_only(request: Request, call_next):
-    # Host check blocks DNS-rebinding; the Origin/content-type check stops another
-    # website from quietly POSTing to this service from the user's browser.
-    host = (request.headers.get("host") or "").rsplit(":", 1)[0].strip("[]")
-    if host not in ALLOWED_HOSTS:
-        return JSONResponse({"detail": "Host not allowed"}, status_code=403)
-    if request.method in ("POST", "PUT", "DELETE"):
-        origin = request.headers.get("origin")
-        if origin and origin.rstrip("/") not in WEB_ORIGINS:
-            return JSONResponse({"detail": "Origin not allowed"}, status_code=403)
-        if not request.headers.get("content-type", "").startswith("application/json"):
-            return JSONResponse({"detail": "Expected JSON"}, status_code=415)
-    return await call_next(request)
 
 
 @app.exception_handler(NotConnected)
@@ -60,10 +112,19 @@ async def _not_connected(request: Request, e: NotConnected):
 # The account (balance, positions, orders, trades) lives here in SQLite so it
 # survives a browser cache wipe — localStorage on the client is just an offline
 # cache. One row per profile; "__meta__" holds the profile list and active name.
+PROFILE = re.compile(r"[^\x00-\x1f\x7f]{1,64}")
+
+
 def _db():
     c = sqlite3.connect(config.DB_FILE)
     c.execute("CREATE TABLE IF NOT EXISTS paper (profile TEXT PRIMARY KEY, json TEXT, updated REAL)")
     return c
+
+
+def _profile(name: str) -> str:
+    if not PROFILE.fullmatch(name) or not name.strip():
+        raise HTTPException(400, "Profile names are 1-64 characters, no control characters")
+    return name
 
 
 class PaperBlob(BaseModel):
@@ -80,7 +141,7 @@ def paper_meta():
 @app.get("/paper/{profile}")
 def paper_get(profile: str):
     with _db() as c:
-        row = c.execute("SELECT json FROM paper WHERE profile=?", (profile,)).fetchone()
+        row = c.execute("SELECT json FROM paper WHERE profile=?", (_profile(profile),)).fetchone()
     if not row:
         raise HTTPException(404, "No saved state for this profile")
     return json.loads(row[0])
@@ -88,17 +149,25 @@ def paper_get(profile: str):
 
 @app.put("/paper/{profile}")
 def paper_put(profile: str, body: PaperBlob):
+    if profile == "__meta__":
+        profiles, active = body.data.get("profiles"), body.data.get("active")
+        if not (isinstance(profiles, list) and all(isinstance(p, str) for p in profiles)
+                and isinstance(active, str)):
+            raise HTTPException(400, "Malformed profile list")
     with _db() as c:
         c.execute(
             "INSERT INTO paper(profile, json, updated) VALUES(?,?,?) "
             "ON CONFLICT(profile) DO UPDATE SET json=excluded.json, updated=excluded.updated",
-            (profile, json.dumps(body.data), time.time()),
+            (_profile(profile), json.dumps(body.data), time.time()),
         )
         c.commit()
     return {"ok": True}
 
 
 # ── market data ───────────────────────────────────────────────────────
+INSTRUMENT = re.compile(r"(NSE|BSE)_(FO|INDEX)\|[A-Za-z0-9 ]{1,32}")
+
+
 @app.get("/health")
 def health():
     return {"ok": True}
@@ -112,28 +181,46 @@ def indices():
 @app.websocket("/ws")
 async def ws(sock: WebSocket):
     """Push every index's chain, about once a second, only when ticks arrived."""
-    origin = (sock.headers.get("origin") or "").rstrip("/")
-    if origin and origin not in WEB_ORIGINS:
-        await sock.close(code=1008)
-        return
     await sock.accept()
     relay.start()
+
+    # Notice a closed tab even while nothing is being sent (market shut, no
+    # broker) — otherwise every page reload would leave a loop running forever.
+    gone = asyncio.Event()
+
+    async def watch_close():
+        try:
+            while (await sock.receive())["type"] != "websocket.disconnect":
+                pass
+        except (WebSocketDisconnect, RuntimeError):
+            pass
+        finally:
+            gone.set()
+
+    watcher = asyncio.create_task(watch_close())
     last_version = -1
     try:
-        while True:
+        while not gone.is_set():
             snap = relay.snapshot()
             if snap["version"] != last_version and snap["indices"]:
                 last_version = snap["version"]
                 await sock.send_json(snap)
-            await asyncio.sleep(0.9)  # broker-like cadence; faster just makes prices unreadable
+            try:  # broker-like cadence; faster just makes prices unreadable
+                await asyncio.wait_for(gone.wait(), timeout=0.9)
+            except asyncio.TimeoutError:
+                pass
     except (WebSocketDisconnect, RuntimeError):
         pass
+    finally:
+        watcher.cancel()
 
 
 @app.get("/candles")
 def candles(key: str, interval: str = "5m"):
     if interval not in INTERVALS:
         raise HTTPException(400, f"interval must be one of {list(INTERVALS)}")
+    if not INSTRUMENT.fullmatch(key):
+        raise HTTPException(400, "Unknown instrument key")
     p = providers.active()
     if p is None:
         raise NotConnected("No broker connected")
@@ -177,7 +264,8 @@ def connect(body: ConnectIn):
     except KeyError:
         raise HTTPException(400, "Unknown broker")
     try:
-        st = p.connect(body.fields)
+        fields = {k: config.check_value(v.strip()) for k, v in body.fields.items()}
+        st = p.connect(fields)
     except ValueError as e:
         raise HTTPException(400, str(e))
     if st.get("connected"):
@@ -206,6 +294,7 @@ def disconnect(body: DisconnectIn):
 # Upstox OAuth ("Login with Upstox"): the browser opens /auth/upstox/login →
 # Upstox sign-in → Upstox redirects to /auth/upstox/callback with a code.
 # UPSTOX_REDIRECT_URI in the user's Upstox app must point at that callback.
+# Failures go back as a short code, never as free text (see LoginError).
 def _back(**query: str):
     return RedirectResponse(f"{WEB_ORIGINS[0]}/trade/settings?{urlencode(query)}")
 
@@ -214,18 +303,20 @@ def _back(**query: str):
 def upstox_login():
     try:
         return RedirectResponse(providers.get("upstox").login_url())
-    except ValueError as e:
-        return _back(error=str(e))
+    except LoginError as e:
+        return _back(error=e.code)
 
 
 @app.get("/auth/upstox/callback")
 def upstox_callback(code: str = "", state: str = "", error: str = ""):
     if error or not code:
-        return _back(error="Upstox login was cancelled")
+        return _back(error="cancelled")
     try:
         providers.get("upstox").finish_login(code, state)
-    except ValueError as e:
-        return _back(error=str(e))
+    except LoginError as e:
+        return _back(error=e.code)
+    except ValueError:
+        return _back(error="refused")
     config.save(BROKER="upstox")
     relay.restart()
     return _back(connected="upstox")

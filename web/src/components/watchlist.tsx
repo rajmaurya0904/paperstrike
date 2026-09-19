@@ -3,14 +3,13 @@
 // Layout adapted from 21st.dev "Stats cards with links" (ephraimduncan) — the
 // recharts area chart is replaced with a plain SVG path; three sparklines don't
 // justify a charting dependency.
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useAllMarkets } from "@/lib/market";
 import { Num } from "@/components/num";
 import { pct, plClass, px, signed } from "@/lib/format";
+import { DATA_URL } from "@/lib/site";
 import { cn } from "@/lib/utils";
-
-const DATA_URL = process.env.NEXT_PUBLIC_DATA_URL ?? "http://localhost:8000";
 
 const INDICES: { key: string; name: string; symbol: string }[] = [
   { key: "NSE_INDEX|Nifty 50", name: "NIFTY 50", symbol: "NIFTY" },
@@ -113,6 +112,7 @@ export function Watchlist() {
 }
 
 function Sparkline({ points, up }: { points: number[]; up: boolean }) {
+  const gradient = useId(); // one per card; ids must be unique in the document
   if (points.length < 2) return <div className="h-16" />;
   const W = 300;
   const H = 60;
@@ -128,17 +128,21 @@ function Sparkline({ points, up }: { points: number[]; up: boolean }) {
   );
   const line = xy.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
   const color = up ? "var(--positive)" : "var(--negative)";
-  const id = `spark-${up ? "up" : "dn"}`;
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="mt-2 h-16 w-full" preserveAspectRatio="none">
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      className="mt-2 h-16 w-full"
+      preserveAspectRatio="none"
+      aria-hidden
+    >
       <defs>
-        <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+        <linearGradient id={gradient} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={color} stopOpacity={0.28} />
           <stop offset="100%" stopColor={color} stopOpacity={0} />
         </linearGradient>
       </defs>
-      <polygon points={`0,${H} ${line} ${W},${H}`} fill={`url(#${id})`} />
+      <polygon points={`0,${H} ${line} ${W},${H}`} fill={`url(#${gradient})`} />
       <polyline
         points={line}
         fill="none"

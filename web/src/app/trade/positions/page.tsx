@@ -4,6 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
+import { useConfirm } from "@/components/confirm";
 import { Num } from "@/components/num";
 import { findQuote, useAllMarkets } from "@/lib/market";
 import { usePaper } from "@/lib/paper";
@@ -15,6 +16,7 @@ export default function PositionsPage() {
   const paper = usePaper();
   const snap = useAllMarkets();
   const [editing, setEditing] = useState<string | null>(null);
+  const [ask, confirmDialog] = useConfirm();
 
   return (
     <div className="flex flex-col gap-4">
@@ -24,7 +26,19 @@ export default function PositionsPage() {
           <Button
             variant="destructive"
             className="rounded-3xl font-semibold"
-            onClick={paper.squareOffAll}
+            onClick={async () => {
+              const n = paper.positions.length;
+              const ok = await ask({
+                title: `Square off ${n === 1 ? "your open position" : `all ${n} positions`}?`,
+                description:
+                  n === 1
+                    ? "It exits at the live bid/ask, and its stop-loss and target are dropped."
+                    : "Each exits at the live bid/ask, and their stop-losses and targets are dropped.",
+                confirm: "Square off all",
+                destructive: true,
+              });
+              if (ok) paper.squareOffAll();
+            }}
           >
             Square off all
           </Button>
@@ -85,6 +99,8 @@ export default function PositionsPage() {
                       size="sm"
                       variant="outline"
                       className="rounded-3xl font-semibold"
+                      aria-expanded={editing === p.instrumentKey}
+                      aria-label={`Stop-loss and target for ${p.label}`}
                       onClick={() =>
                         setEditing((e) => (e === p.instrumentKey ? null : p.instrumentKey))
                       }
@@ -95,6 +111,7 @@ export default function PositionsPage() {
                       size="sm"
                       variant="outline"
                       className="rounded-3xl font-semibold"
+                      aria-label={`Exit ${p.label}`}
                       onClick={() => paper.squareOff(p.instrumentKey)}
                     >
                       Exit
@@ -157,6 +174,7 @@ export default function PositionsPage() {
                       size="xs"
                       variant="ghost"
                       className="rounded-full"
+                      aria-label={`Cancel order ${o.label}`}
                       onClick={() => paper.cancelOrder(o.id)}
                     >
                       Cancel
@@ -196,6 +214,7 @@ export default function PositionsPage() {
           />
         </TabsContent>
       </Tabs>
+      {confirmDialog}
     </div>
   );
 }
@@ -251,7 +270,7 @@ function BracketEditor({
         </Button>
       </div>
       {(!slValid || !tgtValid) && (
-        <p className="w-full text-xs font-semibold text-negative">
+        <p className="w-full text-xs font-semibold text-loss">
           {!slValid && `Stop-loss must be ${long ? "below" : "above"} ${px(ltp)}. `}
           {!tgtValid && `Target must be ${long ? "above" : "below"} ${px(ltp)}.`}
         </p>
@@ -301,8 +320,8 @@ function BookCard({
         ) : (
           <div className="divide-y divide-border">
             {rows.map((r) => (
-              <div key={r.id} className="flex items-center justify-between py-2.5">
-                <div className="flex items-center">{r.left}</div>
+              <div key={r.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2.5">
+                <div className="flex min-w-0 flex-wrap items-center gap-y-1">{r.left}</div>
                 {r.right}
               </div>
             ))}

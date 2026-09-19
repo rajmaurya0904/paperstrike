@@ -11,7 +11,8 @@ import { GithubMark } from "@/components/github-mark";
 import { SITE } from "@/lib/site";
 import { ProcessTimeline } from "@/components/process-timeline";
 import { ThemeToggle } from "@/components/theme";
-import { marketStatus } from "@/lib/hours";
+import { reducedMotion } from "@/lib/motion";
+import { useMarketStatus } from "@/lib/use-market-status";
 
 gsap.registerPlugin(ScrollTrigger, useGSAP);
 
@@ -23,12 +24,16 @@ const CTA_HEADLINE: Record<string, string> = {
   Weekend: "The market is shut for the weekend.",
 };
 
+// the sample card's previous close, so it opens on +70.55 (+0.29%)
+const SAMPLE_PREV = 24741.85;
+
 export default function Landing() {
   const root = useRef<HTMLDivElement>(null);
-  const session = marketStatus();
+  const session = useMarketStatus(); // null until mounted: this page is prerendered
 
   useGSAP(
     () => {
+      if (reducedMotion()) return;
       // hero entrance
       gsap.from("[data-hero] > *", {
         y: 40,
@@ -47,20 +52,19 @@ export default function Landing() {
           scrollTrigger: { trigger: el, start: "top 85%" },
         });
       });
-      // fake ticker drift in hero card
-      const obj = { v: 24812.4 };
-      const el = root.current?.querySelector("[data-tick]");
-      if (el)
-        gsap.to(obj, {
-          v: 24884.9,
-          duration: 14,
-          repeat: -1,
-          yoyo: true,
-          ease: "sine.inOut",
-          onUpdate: () => {
-            el.textContent = obj.v.toFixed(2);
-          },
-        });
+      // sample ticker: each print swaps the digits outright, like a broker
+      // screen, instead of rolling through every value in between
+      const tick = root.current?.querySelector("[data-tick]");
+      const chg = root.current?.querySelector("[data-tick-chg]");
+      if (!tick || !chg) return;
+      let v = 24812.4;
+      const t = window.setInterval(() => {
+        v = Math.min(24890, Math.max(24745, v + (Math.random() - 0.47) * 5));
+        const d = v - SAMPLE_PREV;
+        tick.textContent = v.toFixed(2);
+        chg.textContent = `+${d.toFixed(2)} (+${((d / SAMPLE_PREV) * 100).toFixed(2)}%)`;
+      }, 1200);
+      return () => window.clearInterval(t);
     },
     { scope: root }
   );
@@ -125,7 +129,7 @@ export default function Landing() {
           <div data-tick className="font-mono text-4xl font-black tabular-nums">
             24812.40
           </div>
-          <div className="mt-1 text-sm font-semibold text-positive">
+          <div data-tick-chg className="mt-1 text-sm font-semibold text-positive-deep">
             +70.55 (+0.29%)
           </div>
           <div className="mt-5 grid grid-cols-3 gap-2 text-center text-xs">
@@ -156,7 +160,7 @@ export default function Landing() {
             data-reveal
             cls="bg-accent"
             title="Your capital, your rules"
-            body="Start with any virtual amount — ₹1 lakh or ₹5 crore. Reset whenever. Up to 5 local profiles."
+            body="Start with any virtual amount — ₹1 lakh or ₹5 crore. Reset whenever, and keep separate profiles for separate ideas."
           />
           <FeatureCard
             data-reveal
@@ -215,7 +219,7 @@ export default function Landing() {
           },
           {
             q: "Is it really free and open source?",
-            a: "Yes — the full source is on GitHub under the AGPL-3.0 licence. Run it on your own machine with one Docker command, read every line that touches your keys, and send a pull request if you want another broker supported.",
+            a: "Yes — the full source is on GitHub under the AGPL-3.0 licence. Run it on your own machine with one command (npx or Docker), read every line that touches your keys, and send a pull request if you want another broker supported.",
           },
           {
             q: "Are the charges and margins realistic?",
@@ -236,14 +240,14 @@ export default function Landing() {
       <section className="w-full bg-ink-dark py-20">
         <div data-reveal className="mx-auto flex max-w-3xl flex-col items-center gap-6 px-4 text-center">
           <h2 className="text-4xl font-black leading-tight text-primary sm:text-6xl">
-            {CTA_HEADLINE[session.label] ?? "The market is shut."}
+            {session ? CTA_HEADLINE[session.label] ?? "The market is shut." : "Your first trade is waiting."}
           </h2>
           <Button asChild className="h-13 rounded-3xl px-8 text-lg font-bold">
             <Link href="/trade">
-              {session.open ? "Start now — it's free" : "Explore the app — it's free"}
+              {session && !session.open ? "Explore the app — it's free" : "Start now — it's free"}
             </Link>
           </Button>
-          {!session.open && (
+          {session && !session.open && (
             // orders really are rejected outside hours, so don't promise otherwise
             <span className="text-sm text-canvas-soft/60">
               Chain, charts and strategies still work — orders resume at 09:15 IST.

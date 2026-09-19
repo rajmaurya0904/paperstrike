@@ -3,11 +3,12 @@
 // go straight to the local data service (which checks them with the broker and
 // saves them in its .env); nothing is kept in the browser and nothing is ever
 // read back — /status only says whether the connection works.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { useConfirm } from "@/components/confirm";
 import { marketControl } from "@/lib/market";
 import { DATA_URL } from "@/lib/site";
 import { cn } from "@/lib/utils";
@@ -69,11 +70,14 @@ export function BrokerConnect({
 }) {
   const [tab, setTab] = useState<BrokerId>("upstox");
   const [busy, setBusy] = useState(false);
+  const [ask, confirmDialog] = useConfirm();
+  const ids = useId();
 
   // open on whichever broker is already in use
   useEffect(() => {
+    const inUse = BROKERS.find((b) => b.id === status?.broker);
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (status?.broker) setTab(status.broker);
+    if (inUse) setTab(inUse.id);
   }, [status?.broker]);
 
   async function connect(broker: BrokerId, fields: Record<string, string>, quiet = false) {
@@ -98,7 +102,14 @@ export function BrokerConnect({
   }
 
   async function forget(broker: BrokerId) {
-    if (!confirm(`Remove your saved ${broker === "upstox" ? "Upstox" : "Groww"} keys from this machine?`)) return;
+    const label = broker === "upstox" ? "Upstox" : "Groww";
+    const ok = await ask({
+      title: `Remove your ${label} keys?`,
+      description: `They're deleted from this machine's .env. Live data stops until you connect ${label} again.`,
+      confirm: "Remove keys",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await post("/disconnect", { broker });
       toast.success("Keys removed");
@@ -123,13 +134,24 @@ export function BrokerConnect({
           </p>
         </div>
 
-        <div role="tablist" className="grid grid-cols-2 gap-2">
+        <div role="tablist" aria-label="Broker" className="grid grid-cols-2 gap-2">
           {BROKERS.map((b) => (
             <button
               key={b.id}
+              id={`${ids}-${b.id}-tab`}
               role="tab"
               aria-selected={tab === b.id}
+              aria-controls={`${ids}-panel`}
+              tabIndex={tab === b.id ? 0 : -1}
               onClick={() => setTab(b.id)}
+              onKeyDown={(e) => {
+                // arrow keys move between tabs, as screen-reader users expect
+                if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+                const step = e.key === "ArrowRight" ? 1 : BROKERS.length - 1;
+                const next = BROKERS[(BROKERS.findIndex((x) => x.id === b.id) + step) % BROKERS.length];
+                setTab(next.id);
+                document.getElementById(`${ids}-${next.id}-tab`)?.focus();
+              }}
               className={cn(
                 "rounded-2xl border p-3 text-left transition-colors",
                 tab === b.id ? "border-foreground bg-secondary" : "border-border hover:bg-secondary/60"
@@ -148,11 +170,13 @@ export function BrokerConnect({
           ))}
         </div>
 
-        {tab === "upstox" ? (
-          <UpstoxForm status={status} busy={busy} connect={connect} />
-        ) : (
-          <GrowwForm status={status} busy={busy} connect={connect} />
-        )}
+        <div role="tabpanel" id={`${ids}-panel`} aria-labelledby={`${ids}-${tab}-tab`}>
+          {tab === "upstox" ? (
+            <UpstoxForm status={status} busy={busy} connect={connect} />
+          ) : (
+            <GrowwForm status={status} busy={busy} connect={connect} />
+          )}
+        </div>
 
         {configured(tab) && (
           <button
@@ -163,6 +187,7 @@ export function BrokerConnect({
           </button>
         )}
       </CardContent>
+      {confirmDialog}
     </Card>
   );
 }
@@ -173,6 +198,17 @@ type ConnectFn = (
   quiet?: boolean
 ) => Promise<{ connected?: boolean } | undefined>;
 
+// Keys aren't site passwords: keep password managers from offering to save
+// them (or autofilling the wrong thing) on localhost.
+const NOT_A_LOGIN = {
+  autoComplete: "off",
+  spellCheck: false,
+  "data-1p-ignore": "",
+  "data-lpignore": "true",
+  "data-bwignore": "",
+  "data-form-type": "other",
+} as const;
+
 function Field({
   label,
   hint,
@@ -181,7 +217,7 @@ function Field({
   return (
     <label className="flex flex-col gap-1">
       <span className="text-xs font-semibold">{label}</span>
-      <Input spellCheck={false} autoComplete="off" className="rounded-xl font-mono text-xs" {...props} />
+      <Input {...NOT_A_LOGIN} className="rounded-xl font-mono text-xs" {...props} />
       {hint && <span className="text-[11px] text-mute">{hint}</span>}
     </label>
   );
@@ -190,7 +226,10 @@ function Field({
 function Step({ n, children }: { n: number; children: React.ReactNode }) {
   return (
     <li className="flex gap-2 text-sm text-body">
-      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-secondary text-[11px] font-bold">
+      <span
+        aria-hidden
+        className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-secondary text-[11px] font-bold"
+      >
         {n}
       </span>
       <span>{children}</span>
@@ -205,6 +244,8 @@ function UpstoxForm({ status, busy, connect }: { status: BrokerStatus | null; bu
   const [redirect, setRedirect] = useState(callback);
   const [token, setToken] = useState("");
   const oauthReady = status?.brokers?.find((b) => b.id === "upstox")?.oauth;
+  const appReady = !!(key.trim() && secret.trim() && redirect.trim());
+  const tokenReady = token.trim().split(".").length === 3;
 
   return (
     <div className="flex flex-col gap-4">
@@ -214,63 +255,73 @@ function UpstoxForm({ status, busy, connect }: { status: BrokerStatus | null; bu
         </Step>
         <Step n={2}>
           Create an app at{" "}
-          <a className="font-semibold text-ink-deep hover:underline" href="https://account.upstox.com/developer/apps" target="_blank" rel="noreferrer">
+          <a className="font-semibold text-ink-deep hover:underline" href="https://account.upstox.com/developer/apps" target="_blank" rel="noopener noreferrer">
             Upstox Developer Apps ↗
           </a>
         </Step>
         <Step n={3}>
-          Set its redirect URL to <code className="rounded bg-secondary px-1 text-xs">{callback}</code>
+          Set its redirect URL to <code className="break-all rounded bg-secondary px-1 text-xs">{callback}</code>
         </Step>
         <Step n={4}>Paste the API key and secret below, then log in. Repeat the login each morning — Upstox tokens expire at 03:30 IST.</Step>
       </ol>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="API key" value={key} onChange={(e) => setKey(e.target.value)} placeholder="e.g. 3b4c…" />
-        <Field label="API secret" type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder="••••••" />
-      </div>
-      <Field label="Redirect URL" value={redirect} onChange={(e) => setRedirect(e.target.value)} hint="Must match the app exactly." />
+      <form
+        className="flex flex-col gap-3"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (busy || !appReady) return;
+          const res = await connect("upstox", { api_key: key, api_secret: secret, redirect_uri: redirect }, true);
+          // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- the data service is another origin, not a page of this app
+          if (res) window.location.href = `${DATA_URL}/auth/upstox/login`;
+        }}
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="API key" value={key} onChange={(e) => setKey(e.target.value)} placeholder="e.g. 3b4c…" />
+          <Field label="API secret" type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder="••••••" />
+        </div>
+        <Field label="Redirect URL" type="url" value={redirect} onChange={(e) => setRedirect(e.target.value)} hint="Must match the app exactly." />
 
-      <div className="flex flex-wrap items-center gap-3">
-        <Button
-          disabled={busy || !key.trim() || !secret.trim() || !redirect.trim()}
-          className="rounded-3xl px-6 font-semibold"
-          onClick={async () => {
-            const res = await connect("upstox", { api_key: key, api_secret: secret, redirect_uri: redirect }, true);
-            if (res) window.location.href = `${DATA_URL}/auth/upstox/login`;
-          }}
-        >
-          Save &amp; log in with Upstox
-        </Button>
-        {oauthReady && (
-          <Button asChild variant="secondary" className="rounded-3xl px-6 font-semibold">
-            <a href={`${DATA_URL}/auth/upstox/login`}>Log in with saved app</a>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="submit" disabled={busy || !appReady} className="rounded-3xl px-6 font-semibold">
+            {busy ? "Saving…" : "Save & log in with Upstox"}
           </Button>
-        )}
-      </div>
+          {oauthReady && (
+            <Button asChild variant="secondary" className="rounded-3xl px-6 font-semibold">
+              <a href={`${DATA_URL}/auth/upstox/login`}>Log in with saved app</a>
+            </Button>
+          )}
+        </div>
+      </form>
 
       <details className="rounded-2xl bg-secondary/60 p-3">
         <summary className="cursor-pointer text-sm font-semibold">Or paste an access token</summary>
-        <div className="mt-3 flex flex-col gap-3">
-          <textarea
+        <form
+          className="mt-3 flex flex-col gap-3"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (busy || !tokenReady) return;
+            const res = await connect("upstox", { access_token: token });
+            if (res?.connected) setToken("");
+          }}
+        >
+          {/* masked, so a screen share or a screenshot doesn't leak it */}
+          <Field
+            label="Access token"
+            type="password"
             value={token}
             onChange={(e) => setToken(e.target.value)}
             placeholder="eyJ0eXAiOiJKV1Qi…"
-            rows={3}
-            spellCheck={false}
-            className="w-full resize-none rounded-xl border border-input bg-background p-3 font-mono text-xs outline-none placeholder:text-mute focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            hint="Today's token from the Upstox API. It expires at 03:30 IST."
           />
           <Button
+            type="submit"
             variant="secondary"
-            disabled={busy || token.trim().split(".").length !== 3}
+            disabled={busy || !tokenReady}
             className="self-start rounded-3xl px-6 font-semibold"
-            onClick={async () => {
-              const res = await connect("upstox", { access_token: token });
-              if (res?.connected) setToken("");
-            }}
           >
             {busy ? "Verifying…" : "Verify & connect"}
           </Button>
-        </div>
+        </form>
       </details>
     </div>
   );
@@ -289,10 +340,11 @@ function GrowwForm({ status, busy, connect }: { status: BrokerStatus | null; bus
   const [token, setToken] = useState("");
   const active = status?.broker === "groww";
 
-  const ready =
-    mode === "totp" ? key.trim() && secret.trim() : mode === "approval" ? key.trim() && secret.trim() : token.trim();
+  const ready = mode === "token" ? !!token.trim() : !!(key.trim() && secret.trim());
 
-  async function submit() {
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (busy || !ready) return;
     const fields: Record<string, string> =
       mode === "totp"
         ? { mode, api_key: key, totp_secret: secret }
@@ -312,7 +364,7 @@ function GrowwForm({ status, busy, connect }: { status: BrokerStatus | null; bus
       <ol className="flex flex-col gap-1.5">
         <Step n={1}>
           Subscribe to a{" "}
-          <a className="font-semibold text-ink-deep hover:underline" href="https://groww.in/trade-api" target="_blank" rel="noreferrer">
+          <a className="font-semibold text-ink-deep hover:underline" href="https://groww.in/trade-api" target="_blank" rel="noopener noreferrer">
             Groww Trade API ↗
           </a>{" "}
           plan that includes live data — quotes, option chain and the feed aren&apos;t in the free trial.
@@ -320,10 +372,12 @@ function GrowwForm({ status, busy, connect }: { status: BrokerStatus | null; bus
         <Step n={2}>Generate a key on Groww&apos;s API keys page and paste it below.</Step>
       </ol>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2" role="group" aria-label="How to connect">
         {GROWW_MODES.map((m) => (
           <button
             key={m.id}
+            type="button"
+            aria-pressed={mode === m.id}
             onClick={() => setMode(m.id)}
             className={cn(
               "rounded-full px-3 py-1 text-xs font-bold transition-colors",
@@ -336,41 +390,44 @@ function GrowwForm({ status, busy, connect }: { status: BrokerStatus | null; bus
       </div>
       <p className="-mt-2 text-xs text-mute">{GROWW_MODES.find((m) => m.id === mode)?.note}</p>
 
-      {mode === "token" ? (
-        <Field label="Access token" type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="eyJ…" />
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field
-            label={mode === "totp" ? "TOTP token (API key)" : "API key"}
-            type="password"
-            value={key}
-            onChange={(e) => setKey(e.target.value)}
-          />
-          <Field
-            label={mode === "totp" ? "TOTP secret" : "API secret"}
-            type="password"
-            value={secret}
-            onChange={(e) => setSecret(e.target.value)}
-            hint={mode === "totp" ? "The base32 secret shown when you created the TOTP key." : undefined}
-          />
-        </div>
-      )}
-
-      <div className="flex flex-wrap items-center gap-3">
-        <Button disabled={busy || !ready} onClick={submit} className="rounded-3xl px-6 font-semibold">
-          {busy ? "Verifying…" : "Verify & connect"}
-        </Button>
-        {active && status?.mode !== "token" && (
-          <Button
-            variant="secondary"
-            disabled={busy}
-            className="rounded-3xl px-6 font-semibold"
-            onClick={() => connect("groww", { mode: "reconnect" })}
-          >
-            Reconnect with saved keys
-          </Button>
+      <form className="flex flex-col gap-4" onSubmit={submit}>
+        {mode === "token" ? (
+          <Field label="Access token" type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="eyJ…" />
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field
+              label={mode === "totp" ? "TOTP token (API key)" : "API key"}
+              type="password"
+              value={key}
+              onChange={(e) => setKey(e.target.value)}
+            />
+            <Field
+              label={mode === "totp" ? "TOTP secret" : "API secret"}
+              type="password"
+              value={secret}
+              onChange={(e) => setSecret(e.target.value)}
+              hint={mode === "totp" ? "The base32 secret shown when you created the TOTP key." : undefined}
+            />
+          </div>
         )}
-      </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="submit" disabled={busy || !ready} className="rounded-3xl px-6 font-semibold">
+            {busy ? "Verifying…" : "Verify & connect"}
+          </Button>
+          {active && status?.mode !== "token" && (
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={busy}
+              className="rounded-3xl px-6 font-semibold"
+              onClick={() => connect("groww", { mode: "reconnect" })}
+            >
+              Reconnect with saved keys
+            </Button>
+          )}
+        </div>
+      </form>
     </div>
   );
 }

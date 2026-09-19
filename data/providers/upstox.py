@@ -30,6 +30,17 @@ from .base import INDICES, INTERVALS, Chain, ChainRow, Leg, NotConnected, Provid
 V2 = "https://api.upstox.com/v2"
 V3 = "https://api.upstox.com/v3"
 TIMEOUT = 10
+MAX_PENDING_LOGINS = 8  # OAuth states kept at once; older ones are dropped
+
+
+class LoginError(ValueError):
+    """A "Log in with Upstox" failure. `code` goes back to the web app in the
+    redirect URL, which maps it to its own wording — so the URL can't be used
+    to put arbitrary text on the settings page."""
+
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
 
 
 def _token_exp(token: str):
@@ -98,6 +109,9 @@ class Upstox(Provider):
         if any(app.values()):
             if not all(app.values()):
                 raise ValueError("API key, API secret and redirect URL are all required")
+            u = urllib.parse.urlsplit(app["redirect_uri"])
+            if u.scheme not in ("http", "https") or not u.netloc:
+                raise ValueError("The redirect URL must be a full http:// or https:// address")
             config.save(UPSTOX_API_KEY=app["api_key"], UPSTOX_API_SECRET=app["api_secret"],
                         UPSTOX_REDIRECT_URI=app["redirect_uri"])
         token = (fields.get("access_token") or "").strip()
@@ -111,8 +125,11 @@ class Upstox(Provider):
             raise ValueError("That isn't an Upstox access token (expected a JWT)")
         if exp < time.time():
             raise ValueError("That token has already expired")
-        r = requests.get(f"{V2}/user/profile", timeout=TIMEOUT,
-                         headers={"Authorization": f"Bearer {token}", "Accept": "application/json"})
+        try:
+            r = requests.get(f"{V2}/user/profile", timeout=TIMEOUT,
+                             headers={"Authorization": f"Bearer {token}", "Accept": "application/json"})
+        except requests.RequestException:
+            raise LoginError("network", "Couldn't reach Upstox — check your internet connection")
         if not r.ok:
             raise ValueError("Upstox rejected this token")
         config.save(UPSTOX_ACCESS_TOKEN=token)
@@ -120,11 +137,14 @@ class Upstox(Provider):
 
     def login_url(self) -> str:
         if not self.oauth_ready():
-            raise ValueError("Add your Upstox API key, secret and redirect URL first")
-        # state ties the callback to a login this server started (CSRF guard)
+            raise LoginError("setup", "Add your Upstox API key, secret and redirect URL first")
+        # state ties the callback to a login this server started (CSRF guard).
+        # Any page can make the browser open this URL, so keep only a few
+        # recent states instead of letting them pile up.
         now = time.time()
-        self._oauth_states = {s: t for s, t in self._oauth_states.items() if now - t < 600}
+        live = sorted((t, s) for s, t in self._oauth_states.items() if now - t < 600)
         state = secrets.token_urlsafe(24)
+        self._oauth_states = {s: t for t, s in live[-(MAX_PENDING_LOGINS - 1):]}
         self._oauth_states[state] = now
         q = urllib.parse.urlencode({
             "response_type": "code",
@@ -136,21 +156,34 @@ class Upstox(Provider):
 
     def finish_login(self, code: str, state: str):
         if not state or self._oauth_states.pop(state, None) is None:
-            raise ValueError("Login expired or didn't start here — try again")
-        r = requests.post(
-            f"{V2}/login/authorization/token", timeout=TIMEOUT,
-            headers={"Accept": "application/json"},
-            data={
-                "code": code,
-                "client_id": config.get("UPSTOX_API_KEY"),
-                "client_secret": config.get("UPSTOX_API_SECRET"),
-                "redirect_uri": config.get("UPSTOX_REDIRECT_URI"),
-                "grant_type": "authorization_code",
-            },
-        )
-        if not r.ok:
-            raise ValueError("Upstox refused the login code")
-        self._accept_token(r.json()["access_token"])
+            raise LoginError("state", "Login expired or didn't start here — try again")
+        try:
+            r = requests.post(
+                f"{V2}/login/authorization/token", timeout=TIMEOUT,
+                headers={"Accept": "application/json"},
+                data={
+                    "code": code,
+                    "client_id": config.get("UPSTOX_API_KEY"),
+                    "client_secret": config.get("UPSTOX_API_SECRET"),
+                    "redirect_uri": config.get("UPSTOX_REDIRECT_URI"),
+                    "grant_type": "authorization_code",
+                },
+            )
+        except requests.RequestException:
+            raise LoginError("network", "Couldn't reach Upstox")
+        try:
+            body = r.json() if r.ok else None
+        except ValueError:  # not JSON
+            body = None
+        token = body.get("access_token") if isinstance(body, dict) else None
+        if not isinstance(token, str):
+            raise LoginError("refused", "Upstox refused the login code")
+        try:
+            self._accept_token(token)
+        except LoginError:
+            raise
+        except ValueError as e:
+            raise LoginError("refused", str(e))
 
     # ── market data ──────────────────────────────────────────────
     def nearest_expiry(self, index_id):

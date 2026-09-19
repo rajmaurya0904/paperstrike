@@ -1,21 +1,36 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { RotateCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { BrokerConnect, useBrokerStatus } from "@/components/broker-connect";
+import { RESET_ACCOUNT, useConfirm } from "@/components/confirm";
 import { marketControl, useFeedStatus } from "@/lib/market";
 import { usePaper } from "@/lib/paper";
 import { inr } from "@/lib/format";
-import { DATA_URL } from "@/lib/site";
+import { DATA_URL, SITE } from "@/lib/site";
 import { cn } from "@/lib/utils";
 
 const LABEL: Record<string, string> = { upstox: "Upstox", groww: "Groww" };
+
+// The data service sends ?error=<code> back from "Log in with Upstox". Only
+// these fixed messages are ever shown, so a crafted link can't put its own
+// words on this page.
+const LOGIN_ERRORS: Record<string, string> = {
+  cancelled: "The Upstox login was cancelled.",
+  state: "That login link expired or didn't start here. Try again.",
+  setup: "Save your Upstox API key, secret and redirect URL first.",
+  refused: "Upstox refused the login. Check the API secret and redirect URL, then try again.",
+  network: "Couldn't reach Upstox. Check your internet connection and try again.",
+};
 
 export default function SettingsPage() {
   const feed = useFeedStatus();
   const paper = usePaper();
   const { status, refresh } = useBrokerStatus();
+  const [checking, setChecking] = useState(false);
+  const [ask, confirmDialog] = useConfirm();
 
   // landing back from "Log in with Upstox" — the data service adds ?connected= or ?error=
   useEffect(() => {
@@ -23,20 +38,29 @@ export default function SettingsPage() {
     const ok = q.get("connected");
     const err = q.get("error");
     if (!ok && !err) return;
-    if (ok) {
+    if (ok && LABEL[ok]) {
       marketControl.retryLive = true;
-      toast.success(`Connected to ${LABEL[ok] ?? ok}`, { description: "Live market data is on its way." });
-    } else {
-      toast.error("Login failed", { description: err ?? undefined });
+      toast.success(`Connected to ${LABEL[ok]}`, { description: "Live market data is on its way." });
+    } else if (err) {
+      toast.error("Login failed", {
+        description: LOGIN_ERRORS[err] ?? "The Upstox login didn't complete. Try again.",
+      });
     }
     window.history.replaceState(null, "", window.location.pathname);
   }, []);
+
+  const recheck = async () => {
+    setChecking(true);
+    await refresh();
+    marketControl.retryLive = true;
+    setChecking(false);
+  };
 
   const broker = status?.broker ? LABEL[status.broker] : null;
   const feedState = feed === "live"
     ? { dot: "bg-positive", label: "Live market data", sub: `Streaming from ${broker ?? "your broker"} via the local data service` }
     : status?.reachable === false
-      ? { dot: "bg-negative", label: "Data service offline", sub: `Start it: uvicorn server:app --port 8000 (${DATA_URL})` }
+      ? { dot: "bg-negative", label: "Data service offline", sub: `Nothing is answering at ${DATA_URL}. Start Paperstrike with ${SITE.install}, or run the data service yourself (see the README).` }
       : !status?.broker
         ? { dot: "bg-warning", label: "No broker connected", sub: "Connect Upstox or Groww below to get live prices" }
         : feed === "connecting" || status?.connected
@@ -49,14 +73,14 @@ export default function SettingsPage() {
 
       {/* connection status */}
       <Card className="rounded-3xl">
-        <CardContent className="flex items-center gap-3 p-5">
-          <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full", feedState.dot)} />
-          <div className="min-w-0">
+        <CardContent className="flex flex-wrap items-center gap-3 p-5" aria-live="polite">
+          <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full", feedState.dot)} aria-hidden />
+          <div className="min-w-0 flex-1">
             <div className="font-bold">{feedState.label}</div>
-            <div className="text-xs text-mute">{feedState.sub}</div>
+            <div className="break-words text-xs text-mute">{feedState.sub}</div>
           </div>
-          {status?.expires_at && (
-            <div className="ml-auto shrink-0 text-right text-xs text-mute">
+          {status?.expires_at ? (
+            <div className="shrink-0 text-right text-xs text-mute">
               {broker} token {status.connected ? "valid till" : "expired"}
               <div className={cn("font-semibold", status.connected ? "text-positive-deep" : "text-negative")}>
                 {new Date(status.expires_at * 1000).toLocaleString(undefined, {
@@ -64,6 +88,18 @@ export default function SettingsPage() {
                 })}
               </div>
             </div>
+          ) : null}
+          {feed !== "live" && (
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={checking}
+              onClick={recheck}
+              className="shrink-0 rounded-3xl px-3 font-semibold"
+            >
+              <RotateCw className={cn("h-3.5 w-3.5", checking && "animate-spin")} />
+              {checking ? "Checking…" : "Check again"}
+            </Button>
           )}
         </CardContent>
       </Card>
@@ -83,15 +119,15 @@ export default function SettingsPage() {
           <Button
             variant="destructive"
             className="rounded-3xl font-semibold"
-            onClick={() => {
-              if (confirm("Reset this paper account? All history will be lost."))
-                paper.resetAccount();
+            onClick={async () => {
+              if (await ask(RESET_ACCOUNT)) paper.resetAccount();
             }}
           >
             Reset account
           </Button>
         </CardContent>
       </Card>
+      {confirmDialog}
     </div>
   );
 }

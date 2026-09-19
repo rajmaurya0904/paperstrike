@@ -10,6 +10,7 @@ import { useMemo, useRef, useState } from "react";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import { inr, pct, plClass } from "@/lib/format";
+import { reducedMotion } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 const PERIODS = [
@@ -71,7 +72,7 @@ export function EquityCurve({
   // redraw whenever the period changes, not just on mount
   useGSAP(() => {
     const el = line.current;
-    if (!el) return;
+    if (!el || reducedMotion()) return;
     const len = el.getTotalLength();
     gsap.fromTo(
       el,
@@ -110,6 +111,7 @@ export function EquityCurve({
           {PERIODS.map((p) => (
             <button
               key={p.id}
+              aria-pressed={p.id === period}
               onClick={() => {
                 setPeriod(p.id);
                 setHover(null);

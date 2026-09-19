@@ -18,9 +18,9 @@ import {
   useState,
 } from "react";
 import { Markets, MarketSnapshot, OptionQuote } from "./types";
+import { WS_URL } from "./site";
+import { readLS, writeLS } from "./storage";
 
-const DATA_URL = process.env.NEXT_PUBLIC_DATA_URL ?? "http://localhost:8000";
-const WS_URL = DATA_URL.replace(/^http/, "ws") + "/ws";
 const LS_INDEX = "pt.index";
 export const DEFAULT_INDEX = "NIFTY";
 
@@ -61,14 +61,12 @@ export function MarketProvider({ children }: { children: React.ReactNode }) {
   // safe to read storage during init: nothing index-dependent renders until the
   // first snapshot arrives, which is always client-side
   const [id, setRawId] = useState(() =>
-    typeof window === "undefined"
-      ? DEFAULT_INDEX
-      : localStorage.getItem(LS_INDEX) ?? DEFAULT_INDEX
+    typeof window === "undefined" ? DEFAULT_INDEX : readLS(LS_INDEX) ?? DEFAULT_INDEX
   );
 
   const setId = useCallback((next: string) => {
     setRawId(next);
-    localStorage.setItem(LS_INDEX, next);
+    writeLS(LS_INDEX, next);
   }, []);
 
   useEffect(() => {
@@ -82,14 +80,18 @@ export function MarketProvider({ children }: { children: React.ReactNode }) {
       ws = new WebSocket(WS_URL);
 
       ws.onmessage = (e) => {
+        let d: { indices?: Record<string, Omit<MarketSnapshot, "updatedAt">> };
+        try {
+          d = JSON.parse(e.data);
+        } catch {
+          return; // a garbled frame isn't data; the next push replaces it
+        }
+        if (!d.indices || typeof d.indices !== "object") return;
         lastMsg = Date.now();
         setStatus("live");
-        const d = JSON.parse(e.data);
         const now = Date.now();
         const next: Markets = {};
-        for (const [key, ix] of Object.entries(
-          d.indices as Record<string, Omit<MarketSnapshot, "updatedAt">>
-        )) {
+        for (const [key, ix] of Object.entries(d.indices)) {
           next[key] = { ...ix, updatedAt: now };
         }
         latestMarkets.current = next;
