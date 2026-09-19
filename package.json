@@ -1,6 +1,6 @@
 {
   "name": "paperstrike",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Practice NSE index options (NIFTY, BANKNIFTY, SENSEX) with real market data and virtual money. Bring your own Upstox or Groww API key.",
   "keywords": ["paper-trading", "options", "nse", "nifty", "banknifty", "sensex", "upstox", "groww", "trading-simulator", "option-chain"],
   "homepage": "https://github.com/rajmaurya0904/paperstrike#readme",

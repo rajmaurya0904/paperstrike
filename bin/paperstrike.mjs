@@ -8,7 +8,7 @@
 // minutes). Later runs start in seconds. No dependencies of its own — Node
 // built-ins only, so npx has nothing to download beyond this package.
 import { spawn, spawnSync } from "node:child_process";
-import { chmodSync, cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -161,6 +161,17 @@ const inst = installedFor();
 // the data-service URL is baked into the web build, so a new --api-port means a rebuild
 if (flag("--reinstall") || !inst || inst.apiPort !== API_PORT) install(py);
 
+// each version installs into its own folder; drop the ones this one replaced
+// (a few hundred MB each). Keys and the paper account live in state/, not here.
+for (const old of readdirSync(path.join(HOME, "app"))) {
+  if (old === version) continue;
+  try {
+    rmSync(path.join(HOME, "app", old), { recursive: true, force: true });
+  } catch {
+    // still in use by another running copy — it goes on a later start
+  }
+}
+
 for (const [port, what] of [[WEB_PORT, "--port"], [API_PORT, "--api-port"]]) {
   if (!(await portFree(port))) die(`Port ${port} is already in use. Stop whatever is using it or pass ${what} <other port>.`);
 }
@@ -206,6 +217,14 @@ function stop(code = 0) {
 process.on("SIGINT", () => stop(0));
 process.on("SIGTERM", () => stop(0));
 for (const ch of children) ch.on("exit", (code) => !stopping && (log(red(`\nA service stopped (exit ${code}).`)), stop(1)));
+// a service that can't even start (say its .venv was deleted) would otherwise crash with a stack trace
+for (const ch of children)
+  ch.on("error", (e) => {
+    if (stopping) return;
+    log(red(`\nCouldn't start a service: ${e.message}`));
+    log(`Run it again with ${bold("--reinstall")} to rebuild the app. Your keys and account are kept.`);
+    stop(1);
+  });
 
 const ok = (await waitFor(`http://127.0.0.1:${API_PORT}/health`, 60_000)) && (await waitFor(`http://127.0.0.1:${WEB_PORT}`, 60_000));
 if (!ok) {
