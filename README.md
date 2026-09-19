@@ -218,7 +218,7 @@ invent a price".
 
 ```bash
 cd web && npm run lint && npm run check && npm run build   # charges, margin, strategies, breakout, equity, contrast
-cd data && python -m pytest tests                          # broker payloads + the local-only guards
+cd data && pip install -r requirements-dev.txt && python -m pytest tests   # broker payloads + local-only guards
 ```
 
 ## ⚠️ Disclaimer

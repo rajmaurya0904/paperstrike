@@ -33,7 +33,7 @@ See the README's "Manual setup". Before opening a PR:
 
 ```bash
 cd web && npx tsc --noEmit && npm run lint && npm run check && npm run build
-cd data && python -m pytest tests
+cd data && pip install -r requirements-dev.txt && python -m pytest tests
 ```
 
 Set `API_DOCS=1` when starting the data service to get FastAPI's interactive
