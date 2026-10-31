@@ -1,10 +1,10 @@
 # Pinned to tested versions so every install gets the same code; Dependabot
 # proposes updates. certifi is left free so the CA bundle stays current.
-fastapi==0.141.1
-uvicorn[standard]==0.53.0
+fastapi==0.162.0
+uvicorn[standard]==0.54.0
 requests==2.34.2
 certifi
-python-dotenv==1.2.3
+python-dotenv==1.2.4
 websocket-client==1.9.2
 # must stay on 5.x: proto/MarketDataFeed_pb2.py was generated for protobuf 5.29
 protobuf==5.29.6
